@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header">
+                <h3>{% if ticket %}Editar Ticket{% else %}Nuevo Ticket{% endif %}</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.pasaje.label(class="form-label") }}
+                            {{ form.pasaje(class="form-control") }}
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            {{ form.paciente.label(class="form-label") }}
+                            {{ form.paciente(class="form-control" + (" is-invalid" if form.paciente.errors else "")) }}
+                            {% for error in form.paciente.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.fecha_viaje.label(class="form-label") }}
+                            {{ form.fecha_viaje(class="form-control", type="date") }}
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            {{ form.fecha_ticket.label(class="form-label") }}
+                            {{ form.fecha_ticket(class="form-control", type="date") }}
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            {{ form.distancia.label(class="form-label") }}
+                            {{ form.distancia(class="form-control") }}
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            {{ form.unidad.label(class="form-label") }}
+                            {{ form.unidad(class="form-select") }}
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            {{ form.protocolo.label(class="form-label") }}
+                            {{ form.protocolo(class="form-control" + (" is-invalid" if form.protocolo.errors else "")) }}
+                            {% for error in form.protocolo.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.subtotal.label(class="form-label") }}
+                            {{ form.subtotal(class="form-control") }}
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            {{ form.importe_total.label(class="form-label") }}
+                            {{ form.importe_total(class="form-control") }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.usuario.label(class="form-label") }}
+                        {{ form.usuario(class="form-control" + (" is-invalid" if form.usuario.errors else "")) }}
+                        {% for error in form.usuario.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.imagen.label(class="form-label") }}
+                        {{ form.imagen(class="form-control") }}
+                        {% if ticket and ticket.imagen_path %}
+                            <div class="mt-2">
+                                <img src="{{ url_for('static', filename=ticket.imagen_path) }}" alt="Imagen actual" style="max-width: 200px;">
+                                <p class="text-muted mt-1">Imagen actual</p>
+                            </div>
+                        {% endif %}
+                        <small class="text-muted">Formatos permitidos: JPG, PNG, GIF, BMP, PDF</small>
+                    </div>
+                    
+                    <div class="text-end">
+                        {{ form.submit(class="btn btn-primary") }}
+                        <a href="{{ url_for('listado') }}" class="btn btn-secondary">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

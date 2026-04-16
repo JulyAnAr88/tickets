@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h3>Dashboard #{{ dashboard_id }}</h3>
+                    <p class="text-muted mb-0">Visualización de datos embebida desde Superset</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('superset') }}" class="btn btn-secondary btn-sm">
+                        ← Volver a Dashboards
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Método 1: Usando el endpoint nativo de embed de Superset -->
+                <div class="alert alert-info mb-3">
+                    <strong>Nota:</strong> Si el dashboard no carga, asegúrate de que Superset esté configurado para permitir embebidos.
+                    <br>
+                    <small>URL: {{ dashboard_url }}</small>
+                </div>
+                
+                <div class="embed-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+                    <iframe
+                        src="{{ dashboard_url }}&guest_token={{ guest_token }}"
+                        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+                        title="Superset Dashboard"
+                        allow="fullscreen"
+                        sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation"
+                    >
+                    </iframe>
+                </div>
+                
+                <!-- Script para forzar la recarga si hay errores -->
+                <script>
+                // Manejar errores de iframe
+                const iframe = document.querySelector('iframe');
+                if (iframe) {
+                    iframe.onerror = function() {
+                        console.error('Error loading iframe');
+                        // Recargar después de 2 segundos
+                        setTimeout(() => {
+                            iframe.src = iframe.src;
+                        }, 2000);
+                    };
+                    
+                    // Escuchar mensajes de Superset
+                    window.addEventListener('message', function(event) {
+                        if (event.origin === '{{ superset_url if superset_url else "http://192.168.37.182:8088" }}') {
+                            console.log('Mensaje de Superset:', event.data);
+                        }
+                    });
+                }
+                </script>
+                
+                <div class="mt-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Solución de problemas</h5>
+                        </div>
+                        <div class="card-body">
+                            <ul class="nav nav-tabs" role="tablist">
+                                <li class="nav-item">
+                                    <a class="nav-link active" data-bs-toggle="tab" href="#config">Configuración</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" data-bs-toggle="tab" href="#test">Prueba Directa</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" data-bs-toggle="tab" href="#api">API</a>
+                                </li>
+                            </ul>
+                            
+                            <div class="tab-content mt-3">
+                                <div class="tab-pane active" id="config">
+                                    <h6>Verifica en Superset:</h6>
+                                    <ol>
+                                        <li><code>SESSION_COOKIE_SAMESITE = 'None'</code> en superset_config.py</li>
+                                        <li><code>X-Frame-Options = 'ALLOWALL'</code> en los headers</li>
+                                        <li><code>TALISMAN_ENABLED = False</code> en superset_config.py</li>
+                                        <li>El dashboard debe estar <strong>Publicado</strong> (Published)</li>
+                                        <li>El rol <strong>Public</strong> debe tener permisos de lectura</li>
+                                    </ol>
+                                </div>
+                                
+                                <div class="tab-pane" id="test">
+                                    <h6>Abrir dashboard directamente:</h6>
+                                    <a href="{{ dashboard_url }}" target="_blank" class="btn btn-primary">
+                                        Abrir en nueva pestaña
+                                    </a>
+                                    <p class="mt-2 text-muted">
+                                        Si funciona en nueva pestaña pero no en el iframe, es un problema de 
+                                        <code>X-Frame-Options</code> o cookies.
+                                    </p>
+                                </div>
+                                
+                                <div class="tab-pane" id="api">
+                                    <h6>Guest Token generado:</h6>
+                                    <code class="small">{{ guest_token[:100] }}...</code>
+                                    <div class="mt-2">
+                                        <button class="btn btn-sm btn-info" onclick="navigator.clipboard.writeText('{{ guest_token }}')">
+                                            Copiar Token
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.embed-container {
+    background-color: #f0f0f0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #ddd;
+}
+iframe {
+    background-color: white;
+}
+</style>
+{% endblock %}

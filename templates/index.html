@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10 text-center">
+        <div class="jumbotron bg-light p-5 rounded">
+            <h1 class="display-4">Sistema de Gestión de Tickets</h1>
+            <p class="lead">Gestión de tickets de pacientes, protocolos e imágenes médicas</p>
+            <hr class="my-4">
+            <div class="row mt-5">
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-plus-circle"></i> Nuevo Ticket
+                            </h5>
+                            <p class="card-text">Registrar nuevo ticket con datos del paciente, protocolo e imagen</p>
+                            <a href="{{ url_for('formulario') }}" class="btn btn-primary">Ir al Formulario</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-list-ul"></i> Listado de Tickets
+                            </h5>
+                            <p class="card-text">Ver, editar y eliminar tickets registrados</p>
+                            <a href="{{ url_for('listado') }}" class="btn btn-success">Ver Listado</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-graph-up"></i> Dashboard
+                            </h5>
+                            <p class="card-text">Visualizar análisis y reportes con Superset</p>
+                            <a href="{{ url_for('superset') }}" class="btn btn-info">Ver Dashboard</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
