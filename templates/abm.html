@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <!-- Formulario de carga de imágenes (simplificado) -->
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h3>Cargar Nueva Imagen</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data" id="imagenForm">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="row">
+                        <div class="col-md-10 mb-3">
+                            {{ form.imagen.label(class="form-label") }}
+                            {{ form.imagen(class="form-control") }}
+                            <small class="text-muted">Formatos permitidos: JPG, PNG, GIF, BMP, PDF</small>
+                        </div>
+                        <div class="col-md-2 mb-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-upload"></i> Subir Imagen
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Listado de tickets/imágenes -->
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3>Listado de Imágenes</h3>
+            </div>
+            <div class="card-body">
+                <!-- Formulario de búsqueda -->
+                <form method="GET" action="{{ url_for('abm') }}" class="mb-4">
+                    <div class="row">
+                        <div class="col-md-5 mb-2">
+                            <input type="text" name="termino" class="form-control" 
+                                   placeholder="Buscar por ID o usuario..." 
+                                   value="{{ termino if termino else '' }}">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <input type="date" name="fecha_desde" class="form-control" 
+                                   placeholder="Fecha desde" value="{{ fecha_desde if fecha_desde else '' }}">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <input type="date" name="fecha_hasta" class="form-control" 
+                                   placeholder="Fecha hasta" value="{{ fecha_hasta if fecha_hasta else '' }}">
+                        </div>
+                        <div class="col-md-1 mb-2">
+                            <button class="btn btn-primary w-100" type="submit">
+                                <i class="bi bi-search"></i> Buscar
+                            </button>
+                        </div>
+                    </div>
+                    {% if termino or fecha_desde or fecha_hasta %}
+                        <div class="row">
+                            <div class="col-12">
+                                <a href="{{ url_for('abm') }}" class="btn btn-sm btn-secondary">
+                                    <i class="bi bi-x-circle"></i> Limpiar filtros
+                                </a>
+                            </div>
+                        </div>
+                    {% endif %}
+                </form>
+                
+                {% if tickets %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <!-- <th>ID</th> -->
+                                <th>Nro Comprobante</th>
+                                <th>Paciente</th>
+                                <th>Protocolo</th>
+                                <th>Fecha Ticket</th>
+                                <th>Distancia</th>
+                                <th>Unidad</th>
+                                <th>Importe Total</th>
+                                <th>Usuario</th>
+                                <th>Imagen</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ticket in tickets %}
+                            <tr>
+                                <!-- <td>{{ ticket.id }}</td> -->
+                                <td>{{ ticket.pasaje}}</td>
+                                <td>{{ ticket.paciente }}</td>
+                                <td>{{ ticket.protocolo }}</td>
+                                <td>{{ ticket.fecha_ticket.strftime('%d/%m/%Y') if ticket.fecha_ticket else '-' }}</td>
+                                <td>{{ ticket.distancia if ticket.distancia else '-' }}</td>
+                                <td>{{ ticket.unidad if ticket.unidad else '-' }}</td>
+                                <td>$ {{ '{:,.2f}'.format(ticket.importe_total) if ticket.importe_total else '0.00' }}</td>
+                                <td>{{ ticket.usuario }}</td>
+                                <td>
+                                    {% if ticket.imagen_path %}
+                                        <a href="{{ url_for('static', filename=ticket.imagen_path) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=ticket.imagen_path) }}" 
+                                                 alt="Imagen" style="max-width: 50px; max-height: 50px;">
+                                        </a>
+                                    {% else %}
+                                        <span class="text-muted">Sin imagen</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('editar', id=ticket.id) }}" class="btn btn-sm btn-warning">Editar</a>
+                                    <a href="{{ url_for('eliminar', id=ticket.id) }}" class="btn btn-sm btn-danger" 
+                                       onclick="return confirm('¿Estás seguro de eliminar este ticket?')">Eliminar</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    No hay tickets registrados. <a href="{{ url_for('formulario') }}">Crear el primero</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-cerrar alertas después de 5 segundos
+    setTimeout(function() {
+        const alerts = document.querySelectorAll('.alert');
+        alerts.forEach(function(alert) {
+            const closeButton = alert.querySelector('.btn-close');
+            if (closeButton) {
+                closeButton.click();
+            }
+        });
+    }, 5000);
+    
+    // Mostrar preview de imagen antes de subir
+    const imagenInput = document.querySelector('#imagen');
+    if (imagenInput) {
+        imagenInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    // Puedes agregar una preview aquí si deseas
+                    console.log('Imagen seleccionada:', file.name);
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+});
+</script>
+
+<style>
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.table img {
+    transition: transform 0.2s;
+    object-fit: cover;
+}
+
+.table img:hover {
+    transform: scale(1.5);
+}
+
+.btn-sm {
+    margin: 2px;
+}
+
+@media (max-width: 768px) {
+    .table {
+        font-size: 12px;
+    }
+    
+    .btn-sm {
+        padding: 2px 5px;
+        font-size: 10px;
+    }
+}
+</style>
+{% endblock %}

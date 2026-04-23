@@ -8,20 +8,11 @@
                 <div>
                     <h3>Dashboard #{{ dashboard_id }}</h3>
                     <p class="text-muted mb-0">Visualización de datos embebida desde Superset</p>
-                </div>
-                <div>
-                    <a href="{{ url_for('superset') }}" class="btn btn-secondary btn-sm">
-                        ← Volver a Dashboards
-                    </a>
-                </div>
+                </div>                
             </div>
             <div class="card-body">
                 <!-- Método 1: Usando el endpoint nativo de embed de Superset -->
-                <div class="alert alert-info mb-3">
-                    <strong>Nota:</strong> Si el dashboard no carga, asegúrate de que Superset esté configurado para permitir embebidos.
-                    <br>
-                    <small>URL: {{ dashboard_url }}</small>
-                </div>
+               
                 
                 <div class="embed-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
                     <iframe
@@ -56,7 +47,7 @@
                 }
                 </script>
                 
-                <div class="mt-4">
+                <!-- <div class="mt-4">
                     <div class="card">
                         <div class="card-header">
                             <h5>Solución de problemas</h5>
@@ -109,7 +100,7 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </div> -->
             </div>
         </div>
     </div>

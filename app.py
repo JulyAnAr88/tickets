@@ -5,7 +5,8 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from werkzeug.utils import secure_filename
 from config import Config
 from models import db, Ticket
-from forms import TicketForm, BuscarForm
+
+from forms import BuscarForm, ImagenForm  # Agrega ImagenForm a los imports
 import requests
 from urllib.parse import urlencode
 
@@ -162,6 +163,95 @@ def editar(id):
     
     return render_template('formulario.html', form=form, ticket=ticket)
 
+
+@app.route('/abm', methods=['GET', 'POST'])
+def abm():
+    """Página unificada con carga de imágenes y listado de tickets"""
+    form = ImagenForm()  # Usar el formulario solo de imagen
+    
+    # Procesar la carga de imagen
+    if form.validate_on_submit():
+        if form.imagen.data and form.imagen.data.filename:
+            file = form.imagen.data
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                import time
+                filename = f"{int(time.time())}_{filename}"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+                imagen_path = f"uploads/{filename}"
+                
+                # Crear un nuevo ticket SOLO con la imagen (otros campos vacíos)
+                ticket = Ticket(
+                    paciente=None,
+                    fecha_viaje=None,
+                    fecha_ticket=None,
+                    distancia=None,
+                    unidad=None,
+                    protocolo=None,
+                    subtotal=None,
+                    importe_total=None,
+                    forma_pago=None,
+                    pasaje=None,
+                    usuario="sistema",  # Usuario por defecto
+                    imagen_path=imagen_path,
+                    create_time=datetime.utcnow()
+                )
+                
+                try:
+                    db.session.add(ticket)
+                    db.session.commit()
+                    flash('Imagen cargada exitosamente', 'success')
+                    return redirect(url_for('abm'))
+                except Exception as e:
+                    db.session.rollback()
+                    flash(f'Error al guardar: {str(e)}', 'danger')
+            else:
+                flash('Formato de archivo no permitido', 'danger')
+    
+    # Obtener parámetros de búsqueda
+    termino = request.args.get('termino', '')
+    fecha_desde = request.args.get('fecha_desde', '')
+    fecha_hasta = request.args.get('fecha_hasta', '')
+    
+    # Construir query para el listado
+    query = Ticket.query
+    
+    if termino:
+        query = query.filter(
+            db.or_(
+                Ticket.paciente.contains(termino),
+                Ticket.protocolo.contains(termino),
+                Ticket.unidad.contains(termino),
+                Ticket.usuario.contains(termino),
+                Ticket.pasaje.contains(termino)
+            )
+        )
+    
+    if fecha_desde:
+        try:
+            fecha_desde_dt = datetime.strptime(fecha_desde, '%Y-%m-%d').date()
+            query = query.filter(Ticket.fecha_ticket >= fecha_desde_dt)
+        except:
+            pass
+    
+    if fecha_hasta:
+        try:
+            fecha_hasta_dt = datetime.strptime(fecha_hasta, '%Y-%m-%d').date()
+            query = query.filter(Ticket.fecha_ticket <= fecha_hasta_dt)
+        except:
+            pass
+    
+    tickets = query.order_by(Ticket.create_time.desc()).all()
+    
+    return render_template('abm.html', 
+                         form=form, 
+                         tickets=tickets, 
+                         termino=termino,
+                         fecha_desde=fecha_desde,
+                         fecha_hasta=fecha_hasta)
+
+# Mantener la ruta de eliminar igual
 @app.route('/eliminar/<int:id>')
 def eliminar(id):
     ticket = Ticket.query.get_or_404(id)
@@ -181,7 +271,7 @@ def eliminar(id):
         db.session.rollback()
         flash(f'Error al eliminar: {str(e)}', 'danger')
     
-    return redirect(url_for('listado'))
+    return redirect(url_for('abm'))
 
 @app.route('/buscar')
 def buscar():
@@ -226,37 +316,21 @@ def api_tickets():
 
 @app.route('/superset')
 def superset():
-    """Página principal de Superset embebido con lista de dashboards"""
-    try:
-        # Lista de dashboards disponibles
-        dashboard_list = [
-            {"id": 1, "name": "Dashboard Principal", "description": "Análisis general de tickets"},
-            {"id": 2, "name": "Análisis por Paciente", "description": "Reportes detallados por paciente"},
-            {"id": 3, "name": "Métricas de Viajes", "description": "Estadísticas de distancias y unidades"}
-        ]
-        
-        return render_template('superset_list.html', dashboards=dashboard_list)
-    except Exception as e:
-        flash(f'Error al cargar dashboards: {str(e)}', 'danger')
-        return render_template('superset_list.html', dashboards=[])
-
-@app.route('/superset/dashboard/<int:dashboard_id>')
-def superset_dashboard(dashboard_id):
     """Vista para embeber un dashboard específico de Superset"""
     # Generar token guest para el dashboard
-    guest_token = generate_guest_token(dashboard_id)
+    guest_token = generate_guest_token(1)
     
     # Construir URL de embed con el token
     # Usamos el endpoint de embed en lugar del dashboard normal
     embed_url = f"{SUPERSET_URL}/api/v1/security/guest_token/?token={guest_token}"
     
     # Método alternativo: Usar el iframe directamente
-    dashboard_url = f"{SUPERSET_URL}/superset/dashboard/{dashboard_id}/?standalone=true&show_filters=false"
+    dashboard_url = f"{SUPERSET_URL}/superset/dashboard/1/?standalone=true"
     
     return render_template('superset_dashboard.html', 
                          dashboard_url=dashboard_url,
                          guest_token=guest_token,
-                         dashboard_id=dashboard_id)
+                         dashboard_id=1)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
