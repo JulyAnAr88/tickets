@@ -228,9 +228,45 @@ def abm():
     if termino:
         imagenes = [img for img in imagenes if termino.lower() in img['nombre'].lower()]
     
+    # Obtener parámetros de búsqueda
+    termino = request.args.get('termino', '')
+    fecha_desde = request.args.get('fecha_desde', '')
+    fecha_hasta = request.args.get('fecha_hasta', '')
+    
+    # Construir query para el listado
+    query = Ticket.query
+    
+    if termino:
+        query = query.filter(
+            db.or_(
+                Ticket.paciente.contains(termino),
+                Ticket.protocolo.contains(termino),
+                Ticket.unidad.contains(termino),
+                Ticket.usuario.contains(termino),
+                Ticket.pasaje.contains(termino)
+            )
+        )
+    
+    if fecha_desde:
+        try:
+            fecha_desde_dt = datetime.strptime(fecha_desde, '%Y-%m-%d').date()
+            query = query.filter(Ticket.fecha_ticket >= fecha_desde_dt)
+        except:
+            pass
+    
+    if fecha_hasta:
+        try:
+            fecha_hasta_dt = datetime.strptime(fecha_hasta, '%Y-%m-%d').date()
+            query = query.filter(Ticket.fecha_ticket <= fecha_hasta_dt)
+        except:
+            pass
+    
+    tickets = query.order_by(Ticket.create_time.desc()).all()
+    
     return render_template('abm.html', 
                          form=form, 
                          imagenes=imagenes, 
+                         tickets=tickets,
                          termino=termino)
 
 @app.route('/eliminar_imagen/<filename>')

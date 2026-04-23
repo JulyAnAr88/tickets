@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="row">
-    <!-- Formulario de carga de imágenes (simplificado) -->
+    <!-- Formulario de carga de imágenes -->
     <div class="col-md-12 mb-4">
         <div class="card">
             <div class="card-header">
@@ -29,36 +29,29 @@
         </div>
     </div>
     
-    <!-- Listado de tickets/imágenes -->
+    <!-- Listado de imágenes de la carpeta -->
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
                 <h3>Listado de Imágenes</h3>
+                <p class="text-muted mb-0">Carpeta: {{ upload_folder }}</p>
             </div>
             <div class="card-body">
                 <!-- Formulario de búsqueda -->
                 <form method="GET" action="{{ url_for('abm') }}" class="mb-4">
                     <div class="row">
-                        <div class="col-md-5 mb-2">
+                        <div class="col-md-10 mb-2">
                             <input type="text" name="termino" class="form-control" 
-                                   placeholder="Buscar por ID o usuario..." 
+                                   placeholder="Buscar por nombre de archivo..." 
                                    value="{{ termino if termino else '' }}">
                         </div>
-                        <div class="col-md-3 mb-2">
-                            <input type="date" name="fecha_desde" class="form-control" 
-                                   placeholder="Fecha desde" value="{{ fecha_desde if fecha_desde else '' }}">
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <input type="date" name="fecha_hasta" class="form-control" 
-                                   placeholder="Fecha hasta" value="{{ fecha_hasta if fecha_hasta else '' }}">
-                        </div>
-                        <div class="col-md-1 mb-2">
+                        <div class="col-md-2 mb-2">
                             <button class="btn btn-primary w-100" type="submit">
                                 <i class="bi bi-search"></i> Buscar
                             </button>
                         </div>
                     </div>
-                    {% if termino or fecha_desde or fecha_hasta %}
+                    {% if termino %}
                         <div class="row">
                             <div class="col-12">
                                 <a href="{{ url_for('abm') }}" class="btn btn-sm btn-secondary">
@@ -69,7 +62,7 @@
                     {% endif %}
                 </form>
                 
-                {% if tickets %}
+                {% if imagenes %}
                 <div class="table-responsive">
                     <table class="table table-striped table-hover">
                         <thead class="table-dark">
@@ -79,7 +72,6 @@
                                 <th>Paciente</th>
                                 <th>Protocolo</th>
                                 <th>Fecha Ticket</th>
-                                <th>Distancia</th>
                                 <th>Unidad</th>
                                 <th>Importe Total</th>
                                 <th>Usuario</th>
@@ -95,7 +87,6 @@
                                 <td>{{ ticket.paciente }}</td>
                                 <td>{{ ticket.protocolo }}</td>
                                 <td>{{ ticket.fecha_ticket.strftime('%d/%m/%Y') if ticket.fecha_ticket else '-' }}</td>
-                                <td>{{ ticket.distancia if ticket.distancia else '-' }}</td>
                                 <td>{{ ticket.unidad if ticket.unidad else '-' }}</td>
                                 <td>$ {{ '{:,.2f}'.format(ticket.importe_total) if ticket.importe_total else '0.00' }}</td>
                                 <td>{{ ticket.usuario }}</td>
@@ -142,18 +133,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }, 5000);
     
-    // Mostrar preview de imagen antes de subir
+    // Preview de imagen antes de subir
     const imagenInput = document.querySelector('#imagen');
     if (imagenInput) {
         imagenInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    // Puedes agregar una preview aquí si deseas
-                    console.log('Imagen seleccionada:', file.name);
+                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'application/pdf'];
+                if (allowedTypes.includes(file.type)) {
+                    console.log('Archivo válido:', file.name, 'Tamaño:', file.size);
+                } else {
+                    alert('Tipo de archivo no permitido. Use JPG, PNG, GIF, BMP o PDF');
+                    this.value = '';
                 }
-                reader.readAsDataURL(file);
             }
         });
     }
@@ -169,10 +161,12 @@ document.addEventListener('DOMContentLoaded', function() {
 .table img {
     transition: transform 0.2s;
     object-fit: cover;
+    border-radius: 4px;
 }
 
 .table img:hover {
     transform: scale(1.5);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 .btn-sm {
