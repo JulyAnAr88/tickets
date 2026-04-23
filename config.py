@@ -17,6 +17,9 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Configuración de uploads (para imágenes)
-    UPLOAD_FOLDER = 'static/uploads'
+    # UPLOAD_FOLDER = 'static/uploads'
+    # PROCESSED_FOLDER = 'static/processed'
+    UPLOAD_FOLDER = '/home/files/incoming'
+    PROCESSED_FOLDER = '/home/files/processed'
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp'}

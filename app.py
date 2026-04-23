@@ -140,7 +140,7 @@ def editar(id):
             if file and allowed_file(file.filename):
                 # Eliminar imagen anterior si existe
                 if ticket.imagen_path:
-                    old_file = os.path.join(app.config['UPLOAD_FOLDER'], 
+                    old_file = os.path.join(app.config['PROCESSED_FOLDER'], 
                                            os.path.basename(ticket.imagen_path))
                     if os.path.exists(old_file):
                         os.remove(old_file)
@@ -148,7 +148,7 @@ def editar(id):
                 filename = secure_filename(file.filename)
                 import time
                 filename = f"{int(time.time())}_{filename}"
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                filepath = os.path.join(app.config['PROCESSED_FOLDER'], filename)
                 file.save(filepath)
                 ticket.imagen_path = f"uploads/{filename}"
                 flash('Imagen actualizada', 'success')
@@ -166,90 +166,91 @@ def editar(id):
 
 @app.route('/abm', methods=['GET', 'POST'])
 def abm():
-    """Página unificada con carga de imágenes y listado de tickets"""
-    form = ImagenForm()  # Usar el formulario solo de imagen
+    """Página unificada con carga de imágenes y listado de archivos"""
+    form = ImagenForm()
     
-    # Procesar la carga de imagen
+    # Procesar la carga de imagen (SOLO GUARDA EN CARPETA)
     if form.validate_on_submit():
         if form.imagen.data and form.imagen.data.filename:
             file = form.imagen.data
             if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                import time
-                filename = f"{int(time.time())}_{filename}"
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(filepath)
-                imagen_path = f"uploads/{filename}"
-                
-                # Crear un nuevo ticket SOLO con la imagen (otros campos vacíos)
-                ticket = Ticket(
-                    paciente=None,
-                    fecha_viaje=None,
-                    fecha_ticket=None,
-                    distancia=None,
-                    unidad=None,
-                    protocolo=None,
-                    subtotal=None,
-                    importe_total=None,
-                    forma_pago=None,
-                    pasaje=None,
-                    usuario="sistema",  # Usuario por defecto
-                    imagen_path=imagen_path,
-                    create_time=datetime.utcnow()
-                )
-                
                 try:
-                    db.session.add(ticket)
-                    db.session.commit()
-                    flash('Imagen cargada exitosamente', 'success')
-                    return redirect(url_for('abm'))
+                    # Crear nombre único para el archivo
+                    filename = secure_filename(file.filename)
+                    import time
+                    timestamp = int(time.time())
+                    filename = f"{timestamp}_{filename}"
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    
+                    # Guardar la imagen en el servidor
+                    file.save(filepath)
+                    
+                    # Verificar que el archivo se guardó correctamente
+                    if os.path.exists(filepath):
+                        # Obtener tamaño del archivo
+                        file_size = os.path.getsize(filepath)
+                        flash(f'¡Imagen cargada exitosamente! ({filename}) - Tamaño: {file_size} bytes', 'success')
+                    else:
+                        flash('Error: No se pudo verificar la imagen guardada', 'danger')
+                        
                 except Exception as e:
-                    db.session.rollback()
-                    flash(f'Error al guardar: {str(e)}', 'danger')
+                    flash(f'Error al guardar la imagen: {str(e)}', 'danger')
             else:
-                flash('Formato de archivo no permitido', 'danger')
+                flash('Formato de archivo no permitido. Use: JPG, PNG, GIF, BMP, PDF', 'danger')
+        else:
+            flash('No se seleccionó ningún archivo', 'warning')
+        
+        return redirect(url_for('abm'))
     
-    # Obtener parámetros de búsqueda
+    # Obtener lista de archivos de la carpeta uploads (para mostrar en el listado)
+    imagenes = []
+    upload_folder = app.config['UPLOAD_FOLDER']
+    
+    if os.path.exists(upload_folder):
+        for filename in os.listdir(upload_folder):
+            filepath = os.path.join(upload_folder, filename)
+            if os.path.isfile(filepath):
+                # Obtener información del archivo
+                stat = os.stat(filepath)
+                imagenes.append({
+                    'nombre': filename,
+                    'ruta': f"uploads/{filename}",
+                    'tamaño': stat.st_size,
+                    'fecha': datetime.fromtimestamp(stat.st_mtime),
+                    'extension': filename.split('.')[-1].upper() if '.' in filename else 'DESCONOCIDO'
+                })
+    
+    # Ordenar por fecha descendente (más recientes primero)
+    imagenes.sort(key=lambda x: x['fecha'], reverse=True)
+    
+    # Filtrar por término de búsqueda si existe
     termino = request.args.get('termino', '')
-    fecha_desde = request.args.get('fecha_desde', '')
-    fecha_hasta = request.args.get('fecha_hasta', '')
-    
-    # Construir query para el listado
-    query = Ticket.query
-    
     if termino:
-        query = query.filter(
-            db.or_(
-                Ticket.paciente.contains(termino),
-                Ticket.protocolo.contains(termino),
-                Ticket.unidad.contains(termino),
-                Ticket.usuario.contains(termino),
-                Ticket.pasaje.contains(termino)
-            )
-        )
-    
-    if fecha_desde:
-        try:
-            fecha_desde_dt = datetime.strptime(fecha_desde, '%Y-%m-%d').date()
-            query = query.filter(Ticket.fecha_ticket >= fecha_desde_dt)
-        except:
-            pass
-    
-    if fecha_hasta:
-        try:
-            fecha_hasta_dt = datetime.strptime(fecha_hasta, '%Y-%m-%d').date()
-            query = query.filter(Ticket.fecha_ticket <= fecha_hasta_dt)
-        except:
-            pass
-    
-    tickets = query.order_by(Ticket.create_time.desc()).all()
+        imagenes = [img for img in imagenes if termino.lower() in img['nombre'].lower()]
     
     return render_template('abm.html', 
                          form=form, 
-                         tickets=tickets, 
-                         termino=termino,
-                         fecha_desde=fecha_desde,
-                         fecha_hasta=fecha_hasta)
+                         imagenes=imagenes, 
+                         termino=termino)
+
+@app.route('/eliminar_imagen/<filename>')
+def eliminar_imagen(filename):
+    """Eliminar una imagen de la carpeta uploads"""
+    try:
+        # Construir la ruta completa del archivo
+        filepath = os.path.join(app.config['PROCESSED_FOLDER'], filename)
+        
+        # Verificar que el archivo existe
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            flash(f'Imagen "{filename}" eliminada exitosamente', 'success')
+        else:
+            flash(f'La imagen "{filename}" no existe', 'warning')
+            
+    except Exception as e:
+        flash(f'Error al eliminar la imagen: {str(e)}', 'danger')
+    
+    return redirect(url_for('abm'))
 
 # Mantener la ruta de eliminar igual
 @app.route('/eliminar/<int:id>')
@@ -333,4 +334,4 @@ def superset():
                          dashboard_id=1)
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5151)
