@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Mi Perfil</h4>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    {% if user.avatar_url %}
+                        <img src="{{ user.avatar_url }}" alt="Avatar" class="rounded-circle" style="width: 120px; height: 120px; object-fit: cover;">
+                    {% else %}
+                        <i class="bi bi-person-circle" style="font-size: 120px;"></i>
+                    {% endif %}
+                </div>
+                
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="avatar" class="form-label">Avatar</label>
+                        <input type="file" class="form-control" id="avatar" name="avatar" accept="image/*">
+                        <small class="text-muted">Formatos: JPG, PNG, GIF (máx 2MB)</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="full_name" class="form-label">Nombre Completo</label>
+                        <input type="text" class="form-control" id="full_name" name="full_name" 
+                               value="{{ user.full_name or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Correo Electrónico</label>
+                        <input type="email" class="form-control" id="email" value="{{ user.email }}" disabled>
+                        <small class="text-muted">El correo no se puede modificar</small>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-save"></i> Actualizar Perfil
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
