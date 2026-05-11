@@ -1,0 +1,18 @@
+⚠️ INSTRUCCIÓN CRÍTICA: Responde ÚNICA y EXCLUSIVAMENTE con el JSON. No incluyas texto antes, después, ni explicaciones.
+
+Extrae SOLO estos campos del ticket:
+{
+  "pasaje": "número",
+  "fecha_ticket": "DD/MM/AA",
+  "paciente": {"nombre": "nombre apellido", "dni": "número"},
+  "viaje": {"fecha_viaje": "DD/MM/AA", "distancia": número, "unidad": "km"},
+  "totales": {"importe_total": número}
+}
+
+Reglas:
+- El nombre completo va en el campo "nombre"
+- Si no ves un campo, déjalo como string vacío ""
+- La distancia es un número (ej: 40.6)
+- El importe total es un número (ej: 45540.0)
+
+RESPONDE SOLO CON EL JSON, NADA MÁS.

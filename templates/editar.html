@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header">
+                <h3>Editar Ticket #{{ ticket.id }}</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    {{ form.hidden_tag() }}
+
+                    <div class="row">
+                        <!-- Campo de paciente con autocompletado -->
+                        <div class="col-md-6 mb-3">
+                            {{ form.paciente.label(class="form-label") }}
+                            {{ form.paciente(class="form-control", id="paciente_input", autocomplete="off") }}
+                            <div id="paciente_suggestions" class="suggestions-dropdown"></div>
+                            <small class="text-muted">Ingrese al menos 2 caracteres para buscar pacientes
+                                existentes</small>
+                        </div>
+
+                        <script>
+                            // Autocompletado para pacientes
+                            const pacienteInput = document.getElementById('paciente_input');
+                            const suggestionsDiv = document.getElementById('paciente_suggestions');
+
+                            pacienteInput.addEventListener('input', function () {
+                                const query = this.value;
+                                if (query.length < 2) {
+                                    suggestionsDiv.innerHTML = '';
+                                    suggestionsDiv.style.display = 'none';
+                                    return;
+                                }
+
+                                fetch(`/api/pacientes/suggestions?q=${encodeURIComponent(query)}`)
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        if (data.length > 0) {
+                                            suggestionsDiv.innerHTML = data.map(p => `
+                    <div class="suggestion-item" data-nombre="${p.nombre_completo}">
+                        <strong>${p.nombre}</strong> ${p.apellido}
+                    </div>
+                `).join('');
+                                            suggestionsDiv.style.display = 'block';
+
+                                            // Agregar event listeners a las sugerencias
+                                            document.querySelectorAll('.suggestion-item').forEach(item => {
+                                                item.addEventListener('click', function () {
+                                                    pacienteInput.value = this.dataset.nombre;
+                                                    suggestionsDiv.innerHTML = '';
+                                                    suggestionsDiv.style.display = 'none';
+                                                });
+                                            });
+                                        } else {
+                                            suggestionsDiv.innerHTML = '';
+                                            suggestionsDiv.style.display = 'none';
+                                        }
+                                    });
+                            });
+
+                            // Ocultar sugerencias al hacer clic fuera
+                            document.addEventListener('click', function (e) {
+                                if (!suggestionsDiv.contains(e.target) && e.target !== pacienteInput) {
+                                    suggestionsDiv.innerHTML = '';
+                                    suggestionsDiv.style.display = 'none';
+                                }
+                            });
+                        </script>
+                        <div class="col-md-6 mb-3">
+                            {{ form.pasaje.label(class="form-label") }}
+                            {{ form.pasaje(class="form-control") }}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.fecha_viaje.label(class="form-label") }}
+                            {{ form.fecha_viaje(class="form-control", type="date") }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            {{ form.fecha_ticket.label(class="form-label") }}
+                            {{ form.fecha_ticket(class="form-control", type="date") }}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            {{ form.distancia.label(class="form-label") }}
+                            {{ form.distancia(class="form-control") }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            {{ form.unidad.label(class="form-label") }}
+                            {{ form.unidad(class="form-select") }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            {{ form.protocolo.label(class="form-label") }}
+                            {{ form.protocolo(class="form-control", list="protocolos_sugeridos") }}
+                            <datalist id="protocolos_sugeridos">
+                                {% for protocolo in protocolos_sugeridos %}
+                                <option value="{{ protocolo }}">{{ protocolo }}</option>
+                                {% endfor %}
+                            </datalist>
+                            <small class="text-muted">Empiece a escribir para ver sugerencias de protocolos
+                                existentes</small>
+                        </div>
+                    </div>
+
+                    <!-- Nuevos campos -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.tipo_visita.label(class="form-label") }}
+                            {{ form.tipo_visita(class="form-select") }}
+                        </div>
+
+                        <div class="col-md-3 mb-3">
+                            {{ form.requiere_cuidador.label(class="form-label") }}
+                            <div class="form-check mt-2">
+                                {{ form.requiere_cuidador(class="form-check-input") }}
+                                <label class="form-check-label" for="requiere_cuidador">
+                                    Requiere cuidador acompañante
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3 mb-3">
+                            {{ form.es_contingencia.label(class="form-label") }}
+                            <div class="form-check mt-2">
+                                {{ form.es_contingencia(class="form-check-input") }}
+                                <label class="form-check-label" for="es_contingencia">
+                                    Es contingencia médica
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            {{ form.horas_duracion_visita.label(class="form-label") }}
+                            {{ form.horas_duracion_visita(class="form-control", step="0.5", placeholder="Ej: 2.5") }}
+                            <small class="text-muted">Duración en horas (ej: 2.5)</small>
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            {{ form.cantidad_comidas.label(class="form-label") }}
+                            {{ form.cantidad_comidas(class="form-control", placeholder="1") }}
+                            <small class="text-muted">Número de comidas incluidas</small>
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            {{ form.cantidad_noches.label(class="form-label") }}
+                            {{ form.cantidad_noches(class="form-control", placeholder="0") }}
+                            <small class="text-muted">Noches de internación</small>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="form-check">
+                                {{ form.preseleccion_no_completo(class="form-check-input") }}
+                                <label class="form-check-label" for="preseleccion_no_completo">
+                                    Preselección No Completa
+                                </label>
+                                <small class="text-muted d-block">Marcar si la preselección del paciente no está
+                                    completa</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            {{ form.subtotal.label(class="form-label") }}
+                            {{ form.subtotal(class="form-control") }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            {{ form.importe_total.label(class="form-label") }}
+                            {{ form.importe_total(class="form-control") }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.imagen.label(class="form-label") }}
+                        {{ form.imagen(class="form-control") }}
+                        {% if ticket.imagen_path %}
+                        <div class="mt-2">
+                            <img src="{{ url_for('static', filename=ticket.imagen_path) }}" style="max-width: 200px;">
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="text-end">
+                        {{ form.submit(class="btn btn-primary") }}
+                        <a href="{{ url_for('abm') }}" class="btn btn-secondary">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

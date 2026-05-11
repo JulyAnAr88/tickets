@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "model": "gemma-4-26b-a4b-it",
+  "temperature": 0.1,
+  "max_output_tokens": 2048,
+  "extraction": {
+    "single_ticket_prompt": "extract_ticket.txt",
+    "multi_ticket_prompt": "extract_ticket_multi.txt"
+  }
+}

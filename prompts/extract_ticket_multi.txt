@@ -1,0 +1,50 @@
+Tu tarea es **extraer datos de TODOS los tickets visibles en el archivo pdf**. 
+Puede haber múltiples tickets en una misma hoja (ej: facturas recortadas, comprobantes múltiples).
+⚠️ IMPORTANTE: Responde ÚNICA y EXCLUSIVAMENTE con el objeto JSON. 
+NO incluyas texto explicativo, NO incluyas instrucciones, NO incluyas análisis previo.
+La respuesta debe comenzar con "{" y terminar con "}" para cada uno de los tickets.
+
+Reglas:
+- Sin explicaciones.
+- Sin markdown.
+- Sin texto adicional.
+- No inventar datos.
+- Si falta un valor: "" para texto, null para números.
+- Mantener OCR exacto.
+- No corregir errores.
+- No normalizar formato.
+
+Salida:
+{
+  "tickets": [
+    {
+      "pasaje": "",
+      "fecha_ticket": "",
+      "paciente": {
+        "nombre": "",
+        "dni": ""
+      },
+      "viaje": {
+        "fecha_viaje": "",
+        "hora_viaje": "",
+        "distancia": null,
+        "unidad": ""
+      },
+      "totales": {
+        "subtotal": null,
+        "otros_tributos": null,
+        "importe_total": null
+      }
+    }
+  ]
+}
+
+Reglas específicas:
+- Detectar cada ticket por separado.
+- Incluir todos los tickets visibles.
+- "pasaje": número de boleto o pasaje.
+- "paciente": nombre y DNI visibles.
+- Si nombre completo: primera palabra como nombre, resto apellido.
+- "distancia": número.
+- "unidad": unidad visible.
+- Extraer solo lo visible.

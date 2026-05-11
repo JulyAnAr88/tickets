@@ -1,0 +1,332 @@
+/* --------------------------------------------------------------------------
+   Importación de fuentes y estilos base
+   -------------------------------------------------------------------------- */
+/* Se reemplaza Poppins por Montserrat y se añade una fuente serif para títulos, 
+   replicando la combinación tipográfica del sitio original. */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap');
+
+:root {
+    --azul-cedir: #002856;
+    --azul-claro: #F0F5FA;
+    --verde-cedir: #1FB58F;
+    --gris-fondo: #F9FAFB;
+    --texto-principal: #1E293B;
+    --texto-secundario: #64748B;
+    --blanco: #FFFFFF;
+    --gris-borde: #E2E8F0;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Montserrat', sans-serif;
+    background-color: var(--gris-fondo);
+    color: var(--texto-principal);
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+
+/* --------------------------------------------------------------------------
+   Barra de navegación (replicando el estilo de cedirssf.com)
+   -------------------------------------------------------------------------- */
+/* Barra superior de contacto (imitando la sección "Contáctanos" del header) */
+.top-bar {
+    background-color: var(--blanco);
+    padding: 0.5rem 0;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--gris-borde);
+}
+
+.top-bar .contact-info {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.top-bar .contact-info span {
+    color: var(--texto-secundario);
+}
+
+.top-bar .contact-info i {
+    color: var(--verde-cedir);
+    margin-right: 0.4rem;
+}
+
+/* Barra de navegación principal */
+.navbar {
+    background-color: var(--blanco) !important;
+    padding: 0.75rem 0;
+    box-shadow: var(--shadow-sm);
+}
+
+.navbar-brand {
+    font-weight: 800;
+    font-size: 1.6rem;
+    color: var(--azul-cedir) !important;
+    letter-spacing: -0.5px;
+}
+
+.navbar-nav .nav-link {
+    font-weight: 600;
+    color: var(--texto-principal) !important;
+    padding: 0.5rem 1rem !important;
+    transition: color 0.2s ease;
+}
+
+.navbar-nav .nav-link:hover,
+.navbar-nav .nav-link.active {
+    color: var(--verde-cedir) !important;
+}
+
+/* Botón de acceso/login */
+.btn-login {
+    background-color: var(--azul-cedir);
+    color: white !important;
+    border-radius: 2rem !important;
+    padding: 0.4rem 1.2rem !important;
+    margin-left: 1rem;
+    transition: background-color 0.2s ease;
+}
+
+.btn-login:hover {
+    background-color: var(--verde-cedir);
+    color: white !important;
+}
+
+/* Dropdown de usuario */
+.user-dropdown {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-name {
+    font-weight: 500;
+    color: var(--texto-principal);
+}
+
+/* --------------------------------------------------------------------------
+   Tarjetas y contenedores de contenido
+   -------------------------------------------------------------------------- */
+.card {
+    border: none;
+    border-radius: 1rem;
+    background-color: var(--blanco);
+    box-shadow: var(--shadow-md);
+    transition: box-shadow 0.2s ease;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.card:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+.card-header {
+    background-color: var(--blanco);
+    border-bottom: 1px solid var(--gris-borde);
+    padding: 1.25rem 1.5rem;
+    font-weight: 700;
+    color: var(--azul-cedir);
+    font-size: 1.2rem;
+}
+
+/* --------------------------------------------------------------------------
+   Botones
+   -------------------------------------------------------------------------- */
+.btn {
+    padding: 0.6rem 1.2rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    font-size: 0.85rem;
+}
+
+.btn-primary {
+    background-color: var(--verde-cedir);
+    border-color: var(--verde-cedir);
+}
+
+.btn-primary:hover {
+    background-color: #0e9d7a;
+    border-color: #0e9d7a;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-outline-primary {
+    color: var(--azul-cedir);
+    border-color: var(--azul-cedir);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--azul-cedir);
+    border-color: var(--azul-cedir);
+    color: white;
+}
+
+/* --------------------------------------------------------------------------
+   Formularios
+   -------------------------------------------------------------------------- */
+.form-control, .form-select {
+    border-radius: 0.5rem;
+    border: 1px solid var(--gris-borde);
+    padding: 0.6rem 0.9rem;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--verde-cedir);
+    box-shadow: 0 0 0 3px rgba(31, 181, 143, 0.15);
+    outline: none;
+}
+
+.form-label {
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+    color: var(--texto-principal);
+    font-size: 0.85rem;
+}
+
+/* --------------------------------------------------------------------------
+   Tablas
+   -------------------------------------------------------------------------- */
+.table {
+    background-color: var(--blanco);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    margin-bottom: 0;
+}
+
+.table thead th {
+    background-color: var(--azul-cedir);
+    color: white;
+    font-weight: 600;
+    border-bottom: none;
+    padding: 0.9rem 1rem;
+    font-size: 0.85rem;
+}
+
+.table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.table tbody tr:hover {
+    background-color: var(--azul-claro);
+}
+
+/* --------------------------------------------------------------------------
+   Alertas y mensajes
+   -------------------------------------------------------------------------- */
+.alert {
+    border-radius: 0.75rem;
+    border: none;
+    padding: 1rem 1.25rem;
+    font-size: 0.9rem;
+}
+
+.alert-success {
+    background-color: #D1FAE5;
+    color: #065F46;
+}
+
+.alert-danger {
+    background-color: #FEE2E2;
+    color: #991B1B;
+}
+
+/* --------------------------------------------------------------------------
+   Componentes personalizados (mateniendo compatibilidad)
+   -------------------------------------------------------------------------- */
+.dashboard-card {
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border: 1px solid var(--gris-borde);
+}
+
+.dashboard-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.suggestions-dropdown {
+    position: absolute;
+    background: white;
+    border: 1px solid var(--gris-borde);
+    border-radius: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    width: calc(100% - 2rem);
+    box-shadow: var(--shadow-md);
+}
+
+.suggestion-item {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.suggestion-item:hover {
+    background-color: var(--azul-claro);
+}
+
+/* Estilos para barra de carga y errores */
+#loadingPanel .spinner-border {
+    animation-duration: 0.8s;
+    color: var(--verde-cedir);
+}
+
+#loadingPanel .progress-bar {
+    background-color: var(--verde-cedir);
+    transition: width 0.3s ease;
+}
+
+#errorPanel pre {
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    background-color: #F8FAFC;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    font-family: monospace;
+}
+
+/* --------------------------------------------------------------------------
+   Utilitarios y responsividad
+   -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1.3rem;
+    }
+    
+    .card-header {
+        font-size: 1rem;
+        padding: 1rem;
+    }
+    
+    .btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.8rem;
+    }
+    
+    .table {
+        font-size: 0.8rem;
+    }
+}
