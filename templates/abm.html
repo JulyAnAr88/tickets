@@ -2,6 +2,54 @@
 
 {% block content %}
 <div class="row">
+    <!-- ========== MENSAJES FLASH ========== -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category if category != 'message' else 'info' }} alert-dismissible fade show"
+        role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+    <!-- ========== MODAL PARA SELECCIÓN DE PACIENTE ========== -->
+    <div class="modal fade" id="seleccionarPacienteModal" tabindex="-1" aria-labelledby="seleccionarPacienteModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title" id="seleccionarPacienteModalLabel">
+                        <i class="bi bi-question-circle"></i> Seleccionar Paciente
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>No se encontró una coincidencia exacta. Seleccione el paciente correcto:</p>
+                    <div class="alert alert-info">
+                        <strong>Nombre extraído:</strong> <span id="modalNombre"></span><br>
+                        <strong>DNI extraído:</strong> <span id="modalDni"></span>
+                    </div>
+                    <div id="candidatosList" class="list-group">
+                        <!-- Los candidatos se cargarán aquí -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 🆕 INPUT OCULTO PARA ERRORES (aquí, después de flash) ========== -->
+    {% if request.args.get('error') %}
+    <input type="hidden" id="errorData" value='{{ request.args.get("error")|safe }}'>
+    {% endif %}
+
+    {% if error_procesamiento %}
+    <input type="hidden" id="errorData" value='{{ error_procesamiento|tojson|safe }}'>
+    {% endif %}
     <!-- Formulario de carga de imágenes -->
     <div class="col-md-12 mb-4">
         <!-- Sección de procesamiento (opcional, muestra estado) -->
@@ -17,7 +65,7 @@
     <!-- Formulario de carga de imágenes -->
     <div class="col-md-12 mb-4">
         <div class="card">
-            <div class="card-header bg-primary text-white">
+            <div class="card-header loader-image text-white">
                 <h3 class="mb-0">Cargar Nueva Imagen</h3>
             </div>
             <div class="card-body">
@@ -84,6 +132,50 @@
         </div>
     </div>
 
+    <!-- ========== TICKETS PENDIENTES ========== -->
+    {% if tickets_pendientes and tickets_pendientes|length > 0 %}
+    <div class="col-md-12 mb-4">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">
+                    <i class="bi bi-exclamation-triangle"></i> Pacientes no identificados ({{ tickets_pendientes|length
+                    }})
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Los siguientes pacientes no se encontraron automáticamente. Selecciona una opción para cada uno:</p>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Nombre extraído</th>
+                                <th>DNI extraído</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pendiente in tickets_pendientes %}
+                            <tr>
+                                <td>{{ pendiente.index }}</td>
+                                <td>{{ pendiente.nombre or '(no especificado)' }}</td>
+                                <td>{{ pendiente.dni or '(no especificado)' }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary"
+                                        onclick="mostrarSeleccionPaciente({{ pendiente.index }}, {{ pendiente.nombre|tojson }}, {{ pendiente.dni|tojson }})">
+                                        <i class="bi bi-search"></i> Buscar coincidencias
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Listado de tickets -->
     <div class="col-md-12">
         <div class="card">
@@ -109,7 +201,7 @@
                         </div>
                         <div class="col-md-1 mb-2">
                             <button class="btn btn-primary w-100" type="submit">
-                                <i class="bi bi-search"></i> Buscar
+                                <i class="bi bi-search"></i>
                             </button>
                         </div>
                         <div>
@@ -165,11 +257,11 @@
                                     <td>{{ ticket.usuario if ticket.usuario else '-' }}</td>
                                     <td>
                                         <a href="{{ url_for('editar', id=ticket.id) }}" class="btn btn-sm btn-warning">
-                                            <i class="bi bi-pencil"></i> Editar
+                                            <i class="bi bi-pencil"></i> 
                                         </a>
                                         <a href="{{ url_for('eliminar', id=ticket.id) }}" class="btn btn-sm btn-danger"
                                             onclick="return confirm('¿Estás seguro de eliminar este ticket?')">
-                                            <i class="bi bi-trash"></i> Eliminar
+                                            <i class="bi bi-trash"></i> 
                                         </a>
                                     </td>
                                 </tr>
@@ -190,336 +282,11 @@
             </div>
         </div>
     </div>
-</div>
 
-<script>
-    // Variables para la barra de carga
-    let progressInterval;
-    let progressValue = 0;
-
-    // ========== FUNCIONES PARA BARRA DE CARGA ==========
-
-    function showLoading() {
-        const fileInput = document.getElementById('fileInput');
-        if (!fileInput.files || fileInput.files.length === 0) {
-            alert('Por favor, seleccione un archivo primero');
-            return false;
-        }
-
-        const submitBtn = document.getElementById('submitBtn');
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Procesando...';
-
-        const loadingPanel = document.getElementById('loadingPanel');
-        if (loadingPanel) {
-            loadingPanel.style.display = 'block';
-        }
-
-        const progressBar = document.querySelector('#loadingPanel .progress-bar');
-        if (progressBar) {
-            progressValue = 0;
-            progressBar.style.width = '0%';
-
-            progressInterval = setInterval(() => {
-                if (progressValue < 90) {
-                    progressValue += 10;
-                    progressBar.style.width = progressValue + '%';
-
-                    const loadingMessage = document.getElementById('loadingMessage');
-                    if (loadingMessage) {
-                        if (progressValue === 20) {
-                            loadingMessage.textContent = 'Analizando imagen...';
-                        } else if (progressValue === 40) {
-                            loadingMessage.textContent = 'Extrayendo texto con IA...';
-                        } else if (progressValue === 60) {
-                            loadingMessage.textContent = 'Identificando datos del ticket...';
-                        } else if (progressValue === 80) {
-                            loadingMessage.textContent = 'Validando información...';
-                        }
-                    }
-                }
-            }, 800);
-        }
-
-        return true;
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-        const checkboxes = document.querySelectorAll('.ticket-checkbox');
-        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-        const selectAllBtn = document.getElementById('selectAllBtn');
-        const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-        const deleteForm = document.getElementById('deleteForm');
-
-        // Función para actualizar el estado del botón de eliminar
-        function updateDeleteButton() {
-            const checkedCount = document.querySelectorAll('.ticket-checkbox:checked').length;
-            if (checkedCount > 0) {
-                deleteSelectedBtn.disabled = false;
-                deleteSelectedBtn.innerHTML = `<i class="bi bi-trash"></i> Eliminar ${checkedCount} seleccionado${checkedCount > 1 ? 's' : ''}`;
-            } else {
-                deleteSelectedBtn.disabled = true;
-                deleteSelectedBtn.innerHTML = '<i class="bi bi-trash"></i> Eliminar Seleccionados';
-            }
-        }
-
-        // Seleccionar/Deseleccionar todos
-        selectAllCheckbox.addEventListener('change', function () {
-            const isChecked = this.checked;
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = isChecked;
-            });
-            updateDeleteButton();
-        });
-
-        // Botón "Seleccionar Todos"
-        selectAllBtn.addEventListener('click', function () {
-            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = !allChecked;
-            });
-            selectAllCheckbox.checked = !allChecked;
-            updateDeleteButton();
-        });
-
-        // Escuchar cambios en checkboxes individuales
-        checkboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', function () {
-                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-                const someChecked = Array.from(checkboxes).some(cb => cb.checked);
-                selectAllCheckbox.checked = allChecked;
-                selectAllCheckbox.indeterminate = someChecked && !allChecked;
-                updateDeleteButton();
-            });
-        });
-
-        // Eliminar seleccionados con confirmación
-        deleteSelectedBtn.addEventListener('click', function (e) {
-            e.preventDefault();
-            const checkedCount = document.querySelectorAll('.ticket-checkbox:checked').length;
-
-            if (checkedCount === 0) {
-                alert('No hay tickets seleccionados');
-                return;
-            }
-
-            const confirmMessage = `¿Estás seguro de que deseas eliminar ${checkedCount} ticket${checkedCount > 1 ? 's' : ''}?`;
-            if (confirm(confirmMessage)) {
-                deleteForm.submit();
-            }
-        });
-    });
-    // ========== MANEJO DE ERRORES ==========
-
-    function showErrorMessage(errorText) {
-        const loadingPanel = document.getElementById('loadingPanel');
-        if (loadingPanel) {
-            loadingPanel.style.display = 'none';
-        }
-
-        if (progressInterval) {
-            clearInterval(progressInterval);
-        }
-
-        const submitBtn = document.getElementById('submitBtn');
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="bi bi-upload"></i> Subir Imagen';
-        }
-
-        const errorPanel = document.getElementById('errorPanel');
-        if (errorPanel) {
-            const errorMessageDiv = document.getElementById('errorMessage');
-
-            let formattedError = errorText;
-            if (formattedError.length > 1000) {
-                formattedError = formattedError.substring(0, 1000) + '\n\n... (error truncado)';
-            }
-
-            if (errorText.includes('500') || errorText.includes('Internal error')) {
-                formattedError = `⚠️ Error del servidor de IA (Gemini)\n\n${formattedError}\n\n💡 Sugerencia: Reintenta en unos momentos. Si el problema persiste, contacta al administrador.`;
-            }
-
-            errorMessageDiv.innerHTML = `<pre class="mb-0" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(formattedError)}</pre>`;
-            errorPanel.style.display = 'block';
-
-            setTimeout(() => {
-                if (errorPanel.style.display !== 'none') {
-                    errorPanel.style.display = 'none';
-                }
-            }, 30000);
-        }
-    }
-
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    function closeErrorPanel() {
-        const errorPanel = document.getElementById('errorPanel');
-        if (errorPanel) {
-            errorPanel.style.display = 'none';
-        }
-    }
-
-    async function copyErrorToClipboard() {
-        const errorMessageDiv = document.getElementById('errorMessage');
-        if (errorMessageDiv) {
-            const errorText = errorMessageDiv.innerText || errorMessageDiv.textContent;
-            try {
-                await navigator.clipboard.writeText(errorText);
-                const copyBtn = document.getElementById('copyErrorBtn');
-                const originalText = copyBtn.innerHTML;
-                copyBtn.innerHTML = '<i class="bi bi-check-lg"></i> ¡Copiado!';
-                setTimeout(() => {
-                    copyBtn.innerHTML = originalText;
-                }, 2000);
-            } catch (err) {
-                console.error('Error al copiar:', err);
-                alert('No se pudo copiar el error. Selecciona el texto manualmente.');
-            }
-        }
-    }
-
-    // ========== MANEJO DEL ENVÍO DEL FORMULARIO ==========
-
-    async function handleSubmit(event) {
-        event.preventDefault();
-
-        const fileInput = document.getElementById('fileInput');
-        if (!fileInput.files || fileInput.files.length === 0) {
-            alert('Por favor, seleccione un archivo primero');
-            return false;
-        }
-
-        showLoading();
-
-        const formData = new FormData(event.target);
-
-        try {
-            const response = await fetch(event.target.action, {
-                method: 'POST',
-                body: formData
-            });
-
-            const text = await response.text();
-
-            if (!response.ok) {
-                let errorMsg = `Error HTTP ${response.status}: ${response.statusText}`;
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = text;
-                const flashMessage = tempDiv.querySelector('.alert-danger');
-                if (flashMessage) {
-                    errorMsg = flashMessage.innerText;
-                }
-                showErrorMessage(errorMsg);
-                return false;
-            }
-
-            window.location.href = window.location.href;
-            return true;
-
-        } catch (error) {
-            console.error('Error de red:', error);
-            showErrorMessage(`Error de conexión: ${error.message}\n\nVerifica tu conexión a internet.`);
-            return false;
-        }
-    }
-
-    // ========== EVENT LISTENERS ==========
-
-    document.addEventListener('DOMContentLoaded', function () {
-        // Auto-cerrar alertas después de 5 segundos
-        setTimeout(function () {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(function (alert) {
-                const closeButton = alert.querySelector('.btn-close');
-                if (closeButton) {
-                    closeButton.click();
-                }
-            });
-        }, 5000);
-
-        // Preview de imagen antes de subir
-        const imagenInput = document.querySelector('#fileInput');
-        if (imagenInput) {
-            imagenInput.addEventListener('change', function (e) {
-                const file = e.target.files[0];
-                if (file) {
-                    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'application/pdf'];
-                    if (allowedTypes.includes(file.type)) {
-                        console.log('Archivo válido:', file.name, 'Tamaño:', file.size);
-                    } else {
-                        alert('Tipo de archivo no permitido. Use JPG, PNG, GIF, BMP o PDF');
-                        this.value = '';
-                    }
-                }
-            });
-        }
-
-        // Botones de error
-        const closeErrorBtn = document.getElementById('closeErrorBtn');
-        if (closeErrorBtn) {
-            closeErrorBtn.addEventListener('click', closeErrorPanel);
-        }
-
-        const dismissErrorBtn = document.getElementById('dismissErrorBtn');
-        if (dismissErrorBtn) {
-            dismissErrorBtn.addEventListener('click', closeErrorPanel);
-        }
-
-        const copyErrorBtn = document.getElementById('copyErrorBtn');
-        if (copyErrorBtn) {
-            copyErrorBtn.addEventListener('click', copyErrorToClipboard);
-        }
-
-        // Capturar mensajes flash de error de la página recargada
-        const errorAlerts = document.querySelectorAll('.alert-danger');
-        if (errorAlerts.length > 0) {
-            let errorText = '';
-            errorAlerts.forEach(alert => {
-                errorText += alert.innerText + '\n';
-                alert.style.display = 'none';
-            });
-            if (errorText.trim()) {
-                showErrorMessage(errorText);
-            }
-        }
-    });
-</script>
-
-<style>
-    .card {
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-    }
-
-    .table img {
-        transition: transform 0.2s;
-        object-fit: cover;
-        border-radius: 4px;
-    }
-
-    .table img:hover {
-        transform: scale(1.5);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    }
-
-    .btn-sm {
-        margin: 2px;
-    }
-
-    @media (max-width: 768px) {
-        .table {
-            font-size: 12px;
-        }
-
-        .btn-sm {
-            padding: 2px 5px;
-            font-size: 10px;
-        }
-    }
-</style>
-{% endblock %}
+    <!-- Al final del archivo, antes de cerrar body -->
+    <script src="{{ url_for('static', filename='js/errors.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/tickets.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/pacientes.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% endblock %}

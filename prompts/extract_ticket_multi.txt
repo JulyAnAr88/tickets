@@ -41,6 +41,7 @@ Salida:
 
 Reglas específicas:
 - Detectar cada ticket por separado.
+- El DNI debe ser un número (sin puntos ni espacios)
 - Incluir todos los tickets visibles.
 - "pasaje": número de boleto o pasaje.
 - "paciente": nombre y DNI visibles.

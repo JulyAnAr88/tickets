@@ -11,6 +11,7 @@ Extrae SOLO estos campos del ticket:
 
 Reglas:
 - El nombre completo va en el campo "nombre"
+- El DNI debe ser un número (sin puntos ni espacios)
 - Si no ves un campo, déjalo como string vacío ""
 - La distancia es un número (ej: 40.6)
 - El importe total es un número (ej: 45540.0)

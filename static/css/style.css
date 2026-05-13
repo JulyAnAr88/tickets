@@ -60,30 +60,108 @@ body {
     margin-right: 0.4rem;
 }
 
-/* Barra de navegación principal */
-.navbar {
-    background-color: var(--blanco) !important;
+
+.brand-text {
+    font-size: 0.85rem;
+    color: var(--azul-cedir);
+    font-weight: 500;
+    line-height: 1.3;
+    max-width: 250px;
+}
+
+.header-contact {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: flex-end;
+}
+
+.contact-phone, .contact-email {
+    font-size: 0.85rem;
+    color: var(--texto-secundario);
+}
+
+.contact-phone i, .contact-email i {
+    color: var(--verde-cedir);
+    margin-right: 0.5rem;
+}
+
+/* ========== BARRA DE NAVEGACIÓN PRINCIPAL ========== */
+.main-nav {
+    background-color: var(--azul-cedir);
     padding: 0.75rem 0;
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.navbar-brand {
-    font-weight: 800;
-    font-size: 1.6rem;
-    color: var(--azul-cedir) !important;
-    letter-spacing: -0.5px;
+.main-nav .nav-link {
+    color: var(--blanco);
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    transition: all 0.3s ease;
+    border-radius: 0.5rem;
 }
 
-.navbar-nav .nav-link {
-    font-weight: 600;
-    color: var(--texto-principal) !important;
-    padding: 0.5rem 1rem !important;
-    transition: color 0.2s ease;
+.main-nav .nav-link:hover,
+.main-nav .nav-link.active {
+    color: var(--verde-cedir);
 }
 
-.navbar-nav .nav-link:hover,
-.navbar-nav .nav-link.active {
-    color: var(--verde-cedir) !important;
+.main-nav .nav-link.active {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Botón de login en la nav */
+.nav-link.btn-login {
+    background-color: var(--verde-cedir);
+    border-radius: 2rem;
+    padding: 0.5rem 1.25rem;
+}
+
+.nav-link.btn-login:hover {
+    background-color: var(--verde-hover);
+    color: white !important;
+}
+
+/* Dropdown de usuario */
+.user-dropdown {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+}
+
+.user-icon {
+    font-size: 1.5rem;
+}
+
+.user-name {
+    color: white;
+    font-weight: 500;
+}
+
+.dropdown-menu {
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    border: none;
+    margin-top: 0.5rem;
+}
+
+.dropdown-item {
+    padding: 0.5rem 1rem;
+    transition: background-color 0.2s;
+}
+
+.dropdown-item:hover {
+    background-color: var(--gris-fondo);
+}
+
+.dropdown-item i {
+    margin-right: 0.5rem;
+    width: 1.25rem;
 }
 
 /* Botón de acceso/login */
@@ -101,24 +179,6 @@ body {
     color: white !important;
 }
 
-/* Dropdown de usuario */
-.user-dropdown {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.user-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-.user-name {
-    font-weight: 500;
-    color: var(--texto-principal);
-}
 
 /* --------------------------------------------------------------------------
    Tarjetas y contenedores de contenido
@@ -126,24 +186,29 @@ body {
 .card {
     border: none;
     border-radius: 1rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     background-color: var(--blanco);
-    box-shadow: var(--shadow-md);
-    transition: box-shadow 0.2s ease;
     margin-bottom: 1.5rem;
-    overflow: hidden;
 }
 
 .card:hover {
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
 .card-header {
     background-color: var(--blanco);
     border-bottom: 1px solid var(--gris-borde);
     padding: 1.25rem 1.5rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--azul-cedir);
-    font-size: 1.2rem;
+    font-size: 1.25rem;
+    border-top-left-radius: 1rem !important;
+    border-top-right-radius: 1rem !important;
+}
+
+.loader-image, .mi-perfil {
+    background-color: var(--azul-cedir);
+    color: white;
 }
 
 /* --------------------------------------------------------------------------
@@ -165,7 +230,6 @@ body {
 .btn-primary:hover {
     background-color: #0e9d7a;
     border-color: #0e9d7a;
-    transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
 }
 
@@ -186,22 +250,21 @@ body {
 .form-control, .form-select {
     border-radius: 0.5rem;
     border: 1px solid var(--gris-borde);
-    padding: 0.6rem 0.9rem;
-    font-size: 0.9rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.95rem;
     transition: all 0.2s ease;
 }
 
 .form-control:focus, .form-select:focus {
-    border-color: var(--verde-cedir);
-    box-shadow: 0 0 0 3px rgba(31, 181, 143, 0.15);
+    border-color: var(--azul-cedir);
+    box-shadow: 0 0 0 3px rgba(0, 40, 86, 0.15);
     outline: none;
 }
 
 .form-label {
-    font-weight: 600;
-    margin-bottom: 0.4rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
     color: var(--texto-principal);
-    font-size: 0.85rem;
 }
 
 /* --------------------------------------------------------------------------
@@ -209,9 +272,8 @@ body {
    -------------------------------------------------------------------------- */
 .table {
     background-color: var(--blanco);
-    border-radius: 0.75rem;
+    border-radius: 0.5rem;
     overflow: hidden;
-    margin-bottom: 0;
 }
 
 .table thead th {
@@ -219,16 +281,11 @@ body {
     color: white;
     font-weight: 600;
     border-bottom: none;
-    padding: 0.9rem 1rem;
-    font-size: 0.85rem;
-}
-
-.table tbody tr {
-    transition: background-color 0.2s ease;
+    padding: 1rem;
 }
 
 .table tbody tr:hover {
-    background-color: var(--azul-claro);
+    background-color: var(--gris-fondo);
 }
 
 /* --------------------------------------------------------------------------
@@ -260,10 +317,6 @@ body {
     border: 1px solid var(--gris-borde);
 }
 
-.dashboard-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-lg);
-}
 
 .suggestions-dropdown {
     position: absolute;
@@ -308,6 +361,67 @@ body {
     font-family: monospace;
 }
 
+/* ========== FOOTER ========== */
+.footer {
+    background-color: var(--azul-cedir);
+    color: var(--blanco);
+    padding: 3rem 0 1rem;
+    margin-top: 3rem;
+}
+
+.footer-logo {
+    height: 50px;
+    width: auto;
+    margin-bottom: 1rem;
+}
+
+.footer-about {
+    font-size: 0.85rem;
+    opacity: 0.8;
+    line-height: 1.5;
+}
+
+.footer h5 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--verde-cedir);
+}
+
+.footer-contact, .footer-links {
+    list-style: none;
+    padding: 0;
+}
+
+.footer-contact li, .footer-links li {
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.footer-contact i {
+    margin-right: 0.5rem;
+    color: var(--verde-cedir);
+}
+
+.footer-links a {
+    color: var(--blanco);
+    text-decoration: none;
+    opacity: 0.8;
+    transition: opacity 0.3s;
+}
+
+.footer-links a:hover {
+    opacity: 1;
+    color: var(--verde-cedir);
+}
+
+.copyright {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin-top: 1rem;
+}
+
+
 /* --------------------------------------------------------------------------
    Utilitarios y responsividad
    -------------------------------------------------------------------------- */
@@ -328,5 +442,9 @@ body {
     
     .table {
         font-size: 0.8rem;
+    }
+    .btn-sm {
+        padding: 2px 5px;
+        font-size: 10px;
     }
 }

@@ -1,7 +1,7 @@
 import os
 import jwt
-from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, make_response
+from datetime import datetime, time, timedelta
+from flask import Flask, json, render_template, request, redirect, url_for, flash, jsonify, session, make_response
 from werkzeug.utils import secure_filename
 from config import Config
 from models import db, Ticket
@@ -11,6 +11,7 @@ from ticket_processor import FlaskTicketProcessor
 import requests
 from urllib.parse import urlencode
 import logging
+import json
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -76,6 +77,11 @@ def add_header(response):
     response.headers['X-Frame-Options'] = 'ALLOWALL'
     response.headers['Content-Security-Policy'] = "frame-ancestors *"
     return response
+
+@app.context_processor
+def inject_now():
+    from datetime import datetime
+    return {'now': datetime.now()}
 
 # ============ RUTAS DE AUTENTICACIÓN ============
 
@@ -167,72 +173,79 @@ def abm():
     """Página unificada con carga de imágenes y listado de tickets"""
     form = ImagenForm()
     user = supabase_helper.get_current_user()
-
-    # Obtener nombre del usuario para guardar
     nombre_usuario = supabase_helper.get_user_display_name(user)
     
-    # Procesar la carga de imagen
+    # Inicializar variables
+    tickets_pendientes = []
+    error_procesamiento = None
+    
+    # ========== PROCESAR POST (carga de archivo) ==========
     if form.validate_on_submit():
-        if form.imagen.data and form.imagen.data.filename:
-            file = form.imagen.data
-            filename = file.filename
-            logger.info(f"Archivo recibido: {filename}")
-            logger.info(f"Extensión: {filename.split('.')[-1].lower()}")
-            logger.info(f"Extensiones permitidas: {app.config['ALLOWED_EXTENSIONS']}")
-            if file and allowed_file(file.filename):
-                try:
-                    filename = secure_filename(file.filename)                    
-                    filename = f"{filename}"
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    
-                                        # Guardar la imagen temporalmente
-                    file.save(filepath)
-                    
-                    if os.path.exists(filepath):
-                        # Procesar el ticket con Gemini
-                        if ticket_processor:
-                            flash('Procesando imagen con IA...', 'info')
-                            process_result = ticket_processor.process_uploaded_file(filepath, move_to_processed=True)
-                            
-                            if process_result['success']:
-                                flash(f'✅ {process_result["message"]}', 'success')
-                                
-                                # Mostrar datos extraídos en un modal o collapsible
-                                if 'steps' in process_result and 'extraction' in process_result['steps']:
-                                    extracted = process_result['steps']['extraction']
-                                    flash(f'📊 Datos extraídos: {extracted}', 'info')
-                            else:
-                                flash(f'⚠️ El archivo se guardó pero hubo error en procesamiento: {process_result["message"]}', 'warning')
-                                
-                                # Guardar solo la imagen si falla el procesamiento
-                                ticket = Ticket(
-                                    create_time=datetime.utcnow(),
-                                    usuario=nombre_usuario
-                                )
-                                db.session.add(ticket)
-                                db.session.commit()
-                                flash('La imagen fue guardada y será procesada manualmente más tarde', 'info')
-                        else:
-                            # Si no hay procesador, solo guardar la imagen
-                            ticket = Ticket(
-                                create_time=datetime.utcnow(),
-                                usuario=nombre_usuario
-                            )
-                            db.session.add(ticket)
-                            db.session.commit()
-                            flash('Imagen guardada (procesamiento no disponible)', 'warning')
-                    else:
-                        flash('Error: No se pudo guardar la imagen', 'danger')
-                        
-                except Exception as e:
-                    db.session.rollback()
-                    flash(f'Error al procesar: {str(e)}', 'danger')
-            else:
-                flash('Formato de archivo no permitido.Extensiones permitidas: {", ".join(app.config["ALLOWED_EXTENSIONS"])}', 'danger')
-        else:
+        if not form.imagen.data or not form.imagen.data.filename:
             flash('No se seleccionó ningún archivo', 'warning')
+            return redirect(url_for('abm'))
+        
+        file = form.imagen.data
+        filename = file.filename
+        extension = filename.split('.')[-1].lower()
+        
+        if extension not in app.config['ALLOWED_EXTENSIONS']:
+            flash(f'Formato "{extension}" no permitido. Use: {", ".join(app.config["ALLOWED_EXTENSIONS"])}', 'danger')
+            return redirect(url_for('abm'))
+        
+        # Guardar archivo temporalmente
+        timestamp = int(datetime.now().timestamp())
+        safe_filename = f"{timestamp}_{secure_filename(filename)}"
+        temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+        file.save(temp_filepath)
+        
+        if not ticket_processor:
+            flash('Procesador no disponible', 'danger')
+            return redirect(url_for('abm'))
+        
+        # Procesar archivo
+        process_result = ticket_processor.process_uploaded_file(
+            file_path=temp_filepath,
+            usuario=nombre_usuario,
+            move_to_processed=True
+        )
+        
+        if process_result is None:
+            flash('Error: El procesador retornó un resultado vacío', 'danger')
+            return redirect(url_for('abm'))
+        
+        # Mostrar mensajes según resultados
+        if process_result.get('tickets_automaticos'):
+            flash(f'✅ {len(process_result["tickets_automaticos"])} tickets insertados automáticamente', 'success')
+        
+        pendientes = process_result.get('tickets_pendientes', [])
+        if pendientes:
+            # Guardar en session para la siguiente request
+            session['tickets_pendientes'] = pendientes
+            flash(f'⚠️ Se encontraron {len(pendientes)} pacientes no identificados. Por favor selecciona la opción correcta.', 'warning')
+        
+        if process_result.get('tickets_con_error'):
+            flash(f'❌ {len(process_result["tickets_con_error"])} tickets con error de procesamiento', 'danger')
+        
+        if process_result.get('archivo_movido'):
+            flash(f'📁 Archivo archivado en processed', 'info')
+        elif process_result.get('tickets_insertados', 0) == 0 and not pendientes:
+            flash(f'❌ No se insertaron tickets. El archivo queda pendiente para revisión.', 'danger')
+        
+        # Si hay errores, guardarlos en session
+        if process_result.get('errores'):
+            session['error_procesamiento'] = {
+                'mensaje': process_result.get('message', 'Error en procesamiento'),
+                'errores': process_result.get('errores'),
+                'tickets_insertados': process_result.get('tickets_insertados', 0)
+            }
         
         return redirect(url_for('abm'))
+    
+    # ========== PROCESAR GET (cargar página) ==========
+    # Recuperar pendientes de session
+    tickets_pendientes = session.pop('tickets_pendientes', [])
+    error_procesamiento = session.pop('error_procesamiento', None)
     
     # Obtener parámetros de búsqueda
     termino = request.args.get('termino', '')
@@ -270,12 +283,89 @@ def abm():
     tickets = query.order_by(Ticket.create_time.desc()).all()
     
     return render_template('abm.html', 
-                         form=form, 
+                         form=form,
                          tickets=tickets,
                          termino=termino,
                          fecha_desde=fecha_desde,
                          fecha_hasta=fecha_hasta,
-                         user=user)
+                         user=user,
+                         tickets_pendientes=tickets_pendientes,
+                         error_procesamiento=error_procesamiento)
+    
+    
+@app.route('/buscar_candidatos', methods=['POST'])
+@supabase_helper.login_required
+def buscar_candidatos():
+    """Busca candidatos similares para un ticket no encontrado"""
+    data = request.get_json()
+    ticket_id = data.get('ticket_id')
+    nombre = data.get('nombre', '')
+    dni = data.get('dni', '')
+    
+    if not ticket_processor or not ticket_processor.processor:
+        return jsonify({'error': 'Procesador no disponible'}), 500
+    
+    candidates = ticket_processor.processor.protocolo_manager.buscar_candidatos_similares(
+        nombre_busqueda=nombre,
+        dni_busqueda=dni
+    )
+    
+    # Guardar en sesión el ticket pendiente para actualizar después
+    session['pending_ticket'] = {
+        'ticket_id': ticket_id,
+        'nombre_original': nombre,
+        'dni_original': dni
+    }
+    
+    return jsonify({'candidates': candidates})
+
+@app.route('/seleccionar_paciente', methods=['POST'])
+@supabase_helper.login_required
+def seleccionar_paciente():
+    """Actualiza el ticket con el paciente seleccionado manualmente"""
+    data = request.get_json()
+    ticket_id = data.get('ticket_id')
+    paciente_id = data.get('paciente_id')
+    nombre = data.get('nombre')
+    apellido = data.get('apellido')
+    protocolo = data.get('protocolo')
+    
+    try:
+        # Actualizar el ticket con los datos del paciente seleccionado
+        ticket = Ticket.query.get(ticket_id)
+        if ticket:
+            ticket.paciente = f"{nombre} {apellido}"
+            ticket.protocolo = protocolo
+            db.session.commit()
+            
+            # Limpiar sesión
+            session.pop('pending_ticket', None)
+            
+            return jsonify({'success': True, 'message': 'Ticket actualizado correctamente'})
+        else:
+            return jsonify({'success': False, 'message': 'Ticket no encontrado'}), 404
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/limpiar_uploads_huérfanos')
+@supabase_helper.login_required
+def limpiar_uploads_huérfanos():
+    """Limpia archivos en uploads que llevan más de 7 días sin procesar"""
+    import time
+    upload_folder = app.config['UPLOAD_FOLDER']
+    cutoff_time = int(datetime.now().timestamp()) - (7 * 24 * 3600)  # 7 días
+    
+    eliminados = 0
+    for filename in os.listdir(upload_folder):
+        filepath = os.path.join(upload_folder, filename)
+        if os.path.isfile(filepath):
+            if os.path.getmtime(filepath) < cutoff_time:
+                os.remove(filepath)
+                eliminados += 1
+    
+    flash(f'Se eliminaron {eliminados} archivos huérfanos', 'info')
+    return redirect(url_for('abm'))
 
 @app.route('/debug/user')
 @supabase_helper.login_required
@@ -299,7 +389,7 @@ def formulario():
             if file and allowed_file(file.filename):
                 filename = secure_filename(file.filename)
                 import time
-                filename = f"{int(time.time())}_{filename}"
+                filename = f"{int(int(datetime.now().timestamp()))}_{filename}"
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(filepath)
                 flash('Imagen cargada exitosamente', 'success')
@@ -455,7 +545,7 @@ def editar(id):
                 
                 filename = secure_filename(file.filename)
                 import time
-                filename = f"{int(time.time())}_{filename}"
+                filename = f"{int(int(datetime.now().timestamp()))}_{filename}"
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(filepath)
                 ticket.imagen_path = f"uploads/{filename}"

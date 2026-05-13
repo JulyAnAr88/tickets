@@ -444,21 +444,174 @@ class ProtocoloManager:
 
         return results
     
-    def buscar_paciente_protocolo_avanzado(self, nombre_busqueda: str) -> Dict[str, Any]:
+    def buscar_candidatos_similares(self, nombre_busqueda: str = None, dni_busqueda: str = None, limit: int = 5) -> List[Dict[str, Any]]:
         """
-        Busca un paciente por nombre usando algoritmo de matching avanzado
+        Busca candidatos similares cuando no hay coincidencia exacta
 
         Args:
-            nombre_busqueda: Nombre completo o parcial (ej: "farias esica", "esica farias")
+            nombre_busqueda: Nombre a buscar
+            dni_busqueda: DNI a buscar
+            limit: Cantidad máxima de resultados
 
         Returns:
-            Diccionario con datos del paciente y protocolo
+            Lista de candidatos con puntaje de similitud
         """
-        if not nombre_busqueda:
-            return None
+        candidates = []
 
         try:
             with self.engine.connect() as conn:
+                # Si hay DNI, buscar por cercanía numérica
+                if dni_busqueda:
+                    dni_limpio = self._limpiar_dni(dni_busqueda)
+                    if dni_limpio:
+                        # Buscar DNIs cercanos (±1000)
+                        query_dni = """
+                            SELECT 
+                                p.id as persona_id,
+                                p.nombre,
+                                p.apellido,
+                                p.nro_doc,
+                                pr.identificador_protocolo,
+                                pr.id as protocolo_id,
+                                ABS(p.nro_doc - :dni) as diff_dni
+                            FROM cedir.persona p 
+                            INNER JOIN cedir.paciente p2 ON p2.id_persona = p.id 
+                            INNER JOIN cedir.paciente_protocolo pp ON pp.id_paciente = p2.id 
+                            INNER JOIN cedir.protocolo pr ON pr.id = pp.id_protocolo
+                            WHERE ABS(p.nro_doc - :dni) < 1000
+                            ORDER BY diff_dni ASC
+                            LIMIT :limit
+                        """
+                        result = conn.execute(text(query_dni), {
+                            'dni': dni_limpio,
+                            'limit': limit
+                        })
+                        for row in result:
+                            candidates.append({
+                                'persona_id': row[0],
+                                'nombre': row[1],
+                                'apellido': row[2],
+                                'nro_doc': row[3],
+                                'protocolo': row[4],
+                                'protocolo_id': row[5],
+                                'similitud': 100 - min(row[6] / 10, 99),  # Convertir diferencia a porcentaje
+                                'tipo_coincidencia': 'dni_cercano',
+                                'nombre_completo': f"{row[1]} {row[2]}"
+                            })
+
+                # Si hay nombre, buscar por similitud (solo si no hay candidatos por DNI o se necesita)
+                if nombre_busqueda and len(candidates) < limit:
+                    nombre_limpio = nombre_busqueda.strip().lower()
+
+                    query_nombre = """
+                        SELECT 
+                            p.id as persona_id,
+                            p.nombre,
+                            p.apellido,
+                            p.nro_doc,
+                            pr.identificador_protocolo,
+                            pr.id as protocolo_id,
+                            similarity(LOWER(CONCAT(p.nombre, ' ', p.apellido)), :nombre) as sim_completo,
+                            similarity(LOWER(p.nombre), :nombre) as sim_nombre,
+                            similarity(LOWER(p.apellido), :nombre) as sim_apellido
+                        FROM cedir.persona p 
+                        INNER JOIN cedir.paciente p2 ON p2.id_persona = p.id 
+                        INNER JOIN cedir.paciente_protocolo pp ON pp.id_paciente = p2.id 
+                        INNER JOIN cedir.protocolo pr ON pr.id = pp.id_protocolo
+                        WHERE similarity(LOWER(CONCAT(p.nombre, ' ', p.apellido)), :nombre) > 0.3
+                           OR similarity(LOWER(p.nombre), :nombre) > 0.3
+                           OR similarity(LOWER(p.apellido), :nombre) > 0.3
+                        ORDER BY sim_completo DESC, sim_nombre DESC
+                        LIMIT :limit
+                    """
+                    result = conn.execute(text(query_nombre), {
+                        'nombre': nombre_limpio,
+                        'limit': limit - len(candidates)
+                    })
+
+                    for row in result:
+                        # Calcular mejor similitud
+                        sim = max(row[5] or 0, row[6] or 0, row[7] or 0)
+                        candidates.append({
+                            'persona_id': row[0],
+                            'nombre': row[1],
+                            'apellido': row[2],
+                            'nro_doc': row[3],
+                            'protocolo': row[4],
+                            'protocolo_id': row[5],
+                            'similitud': round(sim * 100, 2),
+                            'tipo_coincidencia': 'nombre_similar',
+                            'nombre_completo': f"{row[1]} {row[2]}"
+                        })
+
+                # Eliminar duplicados (mismo persona_id)
+                seen = set()
+                unique_candidates = []
+                for c in candidates:
+                    if c['persona_id'] not in seen:
+                        seen.add(c['persona_id'])
+                        unique_candidates.append(c)
+
+                return unique_candidates[:limit]
+
+        except Exception as e:
+            logger.error(f"Error buscando candidatos: {e}")
+            return []
+    
+    def buscar_paciente_protocolo_avanzado(self, nombre_busqueda: str = None, dni_busqueda: str = None) -> Dict[str, Any]:
+        """
+        Busca un paciente - PRIORIZA BÚSQUEDA POR DNI
+        """
+        try:
+            with self.engine.connect() as conn:
+                # ========== CASO 1: BÚSQUEDA POR DNI (prioridad máxima) ==========
+                if dni_busqueda:
+                    dni_limpio_str = str(dni_busqueda).strip().replace('.', '').replace('-', '').replace(' ', '')
+                    
+                    try:
+                        dni_entero = int(dni_limpio_str)
+                    except ValueError:
+                        dni_entero = None
+                    
+                    if dni_entero is not None:
+                        query_dni = """
+                            SELECT 
+                                p.id as persona_id,
+                                p.nombre,
+                                p.apellido,
+                                p.nro_doc,
+                                pr.identificador_protocolo,
+                                pr.id as protocolo_id
+                            FROM cedir.persona p 
+                            INNER JOIN cedir.paciente p2 ON p2.id_persona = p.id 
+                            INNER JOIN cedir.paciente_protocolo pp ON pp.id_paciente = p2.id 
+                            INNER JOIN cedir.protocolo pr ON pr.id = pp.id_protocolo
+                            WHERE p.nro_doc = :dni
+                            LIMIT 1
+                        """
+                        result = conn.execute(text(query_dni), {'dni': dni_entero})
+                        row = result.fetchone()
+                        
+                        if row:
+                            logger.info(f"✅ Paciente encontrado por DNI: {row[1]} {row[2]} (DNI: {row[3]})")
+                            return {
+                                'persona_id': row[0],
+                                'nombre': row[1],
+                                'apellido': row[2],
+                                'nro_doc': row[3],
+                                'protocolo': row[4],
+                                'protocolo_id': row[5],
+                                'nombre_completo': f"{row[1]} {row[2]}",
+                                'score': 100,
+                                'encontrado_por': 'dni'
+                            }
+            
+            # Caso 2: Búsqueda por nombre
+
+                # Caso 2: Búsqueda por nombre (si no se encontró por DNI o no se proporcionó)
+                if not nombre_busqueda:
+                    return None
+
                 nombre_limpio = nombre_busqueda.strip()
 
                 # Dividir en posible nombre y apellido
@@ -466,20 +619,20 @@ class ProtocoloManager:
                 nombre_part = partes[0] if partes else ''
                 apellido_part = ' '.join(partes[1:]) if len(partes) > 1 else ''
 
-                # Consulta SQL con matching avanzado
-                query = """
+                # Consulta SQL con matching avanzado por nombre
+                query_nombre = """
                     WITH pacientes_norm AS (
                         SELECT 
                             p.id as persona_id,
                             p.nombre,
                             p.apellido,
+                            p.nro_doc,
                             pr.identificador_protocolo,
                             pr.id as protocolo_id,
-                            -- Normalizar para matching
                             LOWER(p.nombre) as nombre_norm,
                             LOWER(p.apellido) as apellido_norm,
                             LOWER(CONCAT(p.nombre, ' ', p.apellido)) as nombre_completo_norm,
-                            -- Calcular similarity
+                            LOWER(CONCAT(p.apellido, ' ', p.nombre)) as apellido_nombre_norm,
                             similarity(LOWER(p.nombre), LOWER(:nombre_busqueda)) as sim_nombre,
                             similarity(LOWER(p.apellido), LOWER(:nombre_busqueda)) as sim_apellido,
                             similarity(LOWER(CONCAT(p.nombre, ' ', p.apellido)), LOWER(:nombre_busqueda)) as sim_completo
@@ -492,9 +645,9 @@ class ProtocoloManager:
                         persona_id,
                         nombre,
                         apellido,
+                        nro_doc,
                         identificador_protocolo,
                         protocolo_id,
-                        nombre_completo_norm,
                         CASE
                             -- Coincidencia exacta de apellido y nombre
                             WHEN apellido_norm = LOWER(:apellido_busqueda) 
@@ -514,6 +667,8 @@ class ProtocoloManager:
                                  AND sim_nombre > 0.60 THEN 85
                             -- Coincidencia por nombre completo
                             WHEN sim_completo > 0.80 THEN 90
+                            -- Coincidencia nombre invertido (apellido + nombre)
+                            WHEN apellido_nombre_norm = LOWER(:nombre_busqueda) THEN 88
                             -- Coincidencia solo por apellido
                             WHEN sim_apellido > 0.85 THEN 80
                             -- Coincidencia solo por nombre
@@ -524,14 +679,16 @@ class ProtocoloManager:
                         END AS score,
                         sim_nombre,
                         sim_apellido,
-                        sim_completo
+                        sim_completo,
+                        apellido_norm,
+                        nombre_norm
                     FROM pacientes_norm
                     WHERE 
-                        -- Filtros iniciales para mejorar performance
                         apellido_norm = LOWER(:apellido_busqueda)
                         OR sim_apellido > 0.60
                         OR sim_completo > 0.60
-                    ORDER BY score DESC, sim_completo DESC
+                        OR apellido_nombre_norm LIKE '%' || LOWER(:nombre_busqueda) || '%'
+                    ORDER BY score DESC
                     LIMIT 1
                 """
 
@@ -540,27 +697,27 @@ class ProtocoloManager:
                     'apellido_busqueda': apellido_part.lower() if apellido_part else nombre_part.lower()
                 }
 
-                result = conn.execute(text(query), params)
+                result = conn.execute(text(query_nombre), params)
                 row = result.fetchone()
 
                 if row:
-                    score = row[6]  # El score está en la posición 6 (index 5 si empezamos en 0)
-                    logger.info(f"✅ Paciente encontrado: {row[1]} {row[2]} -> "
-                               f"Protocolo: {row[3]} | Score: {score}")
+                    score = float(row[6]) if row[6] is not None else 0
+                    logger.info(f"✅ Paciente encontrado por nombre: {row[1]} {row[2]} (DNI: {row[3]}) -> Protocolo: {row[4]} | Score: {score}")
 
-                    # Si el score es muy bajo, considerar no encontrado
                     if score < 60:
                         logger.warning(f"⚠️ Score bajo ({score}) para coincidencia: {nombre_busqueda}")
                         return None
 
                     return {
+                        'persona_id': row[0],
                         'nombre': row[1],
                         'apellido': row[2],
-                        'protocolo': row[3],
-                        'protocolo_id': row[4],
-                        'persona_id': row[0],
+                        'nro_doc': row[3],
+                        'protocolo': row[4],
+                        'protocolo_id': row[5],
                         'nombre_completo': f"{row[1]} {row[2]}",
-                        'score': score
+                        'score': score,
+                        'encontrado_por': 'nombre'
                     }
 
                 logger.warning(f"❌ No se encontró paciente para: {nombre_busqueda}")
@@ -574,48 +731,130 @@ class ProtocoloManager:
     
     def validate_and_correct_ticket_data(self, ticket_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Valida y corrige los datos. Si encuentra al paciente, devuelve el nombre corregido.
-        Si no lo encuentra, marca el ticket para NO insertar.
+        Valida y corrige los datos usando DNI (prioridad máxima)
+        Siempre retorna el ticket con flags para decisión del usuario
         """
-        nombre_extraido = ticket_data.get('paciente', {}).get('nombre', '')
-
-        if not nombre_extraido:
-            logger.warning("No se extrajo nombre de paciente - Ticket no se insertará")
-            ticket_data['paciente']['encontrado'] = False
+        paciente_data = ticket_data.get('paciente', {})
+        nombre_extraido = paciente_data.get('nombre', '')
+        dni_extraido = paciente_data.get('dni', '')
+        
+        # Por defecto, marcar que requiere selección
+        ticket_data['paciente']['encontrado'] = False
+        ticket_data['paciente']['requiere_seleccion'] = True
+        ticket_data['_insertar'] = False  # Por defecto no insertar automáticamente
+        ticket_data['_requiere_seleccion'] = True
+    
+        # Si no hay nombre ni DNI, no se puede buscar
+        if not nombre_extraido and not dni_extraido:
+            logger.warning("No se extrajo nombre ni DNI - Ticket requiere selección manual")
             return ticket_data
-
-        # Probar diferentes variantes del nombre
-        variantes = [
-            nombre_extraido,
-            nombre_extraido.title(),
-            nombre_extraido.lower(),
-            ' '.join(reversed(nombre_extraido.strip().split()))
-        ]
-
+    
         paciente_info = None
-        for variante in set(variantes):
-            logger.info(f"Buscando variante: '{variante}'")
-            paciente_info = self.buscar_paciente_protocolo_avanzado(variante)
-            if paciente_info:
-                break
+        encontrado_por = None
+    
+        # ✅ PRIORIDAD 1: Búsqueda por DNI (más precisa)
+        if dni_extraido:
+            dni_limpio = self._limpiar_dni(dni_extraido)
+            if dni_limpio:
+                logger.info(f"🔍 Buscando por DNI: {dni_limpio}")
+                paciente_info = self.buscar_paciente_protocolo_avanzado(dni_busqueda=str(dni_limpio))
+                
+                if paciente_info:
+                    encontrado_por = 'dni'
+                    # Verificar si el nombre extraído difiere del nombre en BD
+                    nombre_bd = f"{paciente_info['nombre']} {paciente_info['apellido']}".strip()
+                    nombre_normalizado = ' '.join(nombre_extraido.strip().split()).title()
+                    
+                    if nombre_normalizado.lower() != nombre_bd.lower():
+                        logger.warning(f"⚠️ DISCREPANCIA DE NOMBRE: OCR='{nombre_extraido}' vs BD='{nombre_bd}'")
+                        logger.warning(f"✅ Se usará el paciente de BD porque DNI coincide")
+                        ticket_data['paciente']['nombre_discrepancia'] = True
+                        ticket_data['paciente']['nombre_ocr'] = nombre_extraido
+                        ticket_data['paciente']['nombre_bd'] = nombre_bd
+    
+        # PRIORIDAD 2: Búsqueda por nombre si no se encontró por DNI
+        if not paciente_info and nombre_extraido:
+            logger.info(f"🔍 Buscando por nombre: '{nombre_extraido}'")
+            # Probar diferentes variantes del nombre
+            variantes = [
+                nombre_extraido,
+                nombre_extraido.title(),
+                nombre_extraido.lower(),
+                ' '.join(reversed(nombre_extraido.strip().split()))
+            ]
             
+            for variante in set(variantes):
+                paciente_info = self.buscar_paciente_protocolo_avanzado(nombre_busqueda=variante)
+                if paciente_info:
+                    encontrado_por = 'nombre'
+                    logger.info(f"✅ Paciente encontrado por nombre (variante: '{variante}')")
+                    break
+                
         if paciente_info:
-            # ✅ Paciente encontrado - usar nombre concatenado de la BD
+            # ✅ Coincidencia encontrada - actualizar datos
             nombre_completo = f"{paciente_info['nombre']} {paciente_info['apellido']}"
             ticket_data['paciente']['nombre'] = nombre_completo
             ticket_data['paciente']['protocolo'] = paciente_info['protocolo']
             ticket_data['paciente']['persona_id'] = paciente_info['persona_id']
             ticket_data['paciente']['protocolo_id'] = paciente_info['protocolo_id']
+            
+            if paciente_info.get('nro_doc'):
+                ticket_data['paciente']['nro_doc'] = int(paciente_info['nro_doc'])
+            
             ticket_data['paciente']['encontrado'] = True
-            ticket_data['paciente']['score'] = paciente_info.get('score', 0)
-
-            logger.info(f"✅ Paciente ENCONTRADO: '{nombre_extraido}' -> '{nombre_completo}'")
-            logger.info(f"📋 Protocolo: {paciente_info['protocolo']}")
-            logger.info(f"📊 Ticket data después de validación: {ticket_data}")
-            return ticket_data  # ← Asegurar que retorna ticket_data
+            ticket_data['paciente']['score'] = paciente_info.get('score', 100)
+            ticket_data['paciente']['encontrado_por'] = encontrado_por
+            ticket_data['_insertar'] = True  # Marcar para inserción automática
+            ticket_data['_requiere_seleccion'] = False
+            
+            logger.info(f"✅ Paciente VALIDADO automáticamente: '{nombre_extraido}' -> '{nombre_completo}' (DNI: {paciente_info.get('nro_doc', 'N/A')})")
+            logger.info(f"📋 Protocolo asignado: {paciente_info['protocolo']}")
+            
         else:
-            ticket_data['paciente']['encontrado'] = False
-            logger.warning(f"❌ Paciente NO ENCONTRADO: '{nombre_extraido}'")
-            return ticket_data 
-
+            # ❌ No se encontró coincidencia - buscar candidatos similares para selección manual
+            logger.warning(f"❌ Paciente NO ENCONTRADO automáticamente: DNI='{dni_extraido}', Nombre='{nombre_extraido}'")
+            
+            # Buscar candidatos similares para mostrar al usuario
+            candidatos = self.buscar_candidatos_similares(
+                nombre_busqueda=nombre_extraido,
+                dni_busqueda=dni_extraido
+            )
+            ticket_data['paciente']['candidatos'] = candidatos
+            ticket_data['paciente']['requiere_seleccion'] = True
+            ticket_data['_insertar'] = False
+            ticket_data['_requiere_seleccion'] = True
+            
+            if candidatos:
+                logger.info(f"📋 Se encontraron {len(candidatos)} candidatos similares para selección manual")
+            else:
+                logger.warning("📋 No se encontraron candidatos similares")
+    
         return ticket_data
+    
+    def _limpiar_dni(self, dni: Any) -> Optional[int]:
+        """
+        Convierte un DNI desde string o número a entero limpio
+
+        Args:
+            dni: DNI en formato string, int, o float
+
+        Returns:
+            DNI como entero o None si no es válido
+        """
+        if dni is None:
+            return None
+
+        # Convertir a string
+        dni_str = str(dni).strip()
+
+        # Eliminar caracteres no numéricos
+        dni_limpio = ''.join(filter(str.isdigit, dni_str))
+
+        if not dni_limpio:
+            return None
+
+        try:
+            return int(dni_limpio)
+        except ValueError:
+            logger.warning(f"No se pudo convertir DNI: {dni}")
+            return None

@@ -4,4 +4,5 @@ instance/
 venv/
 migrations/
 uploads/
-error*
+error_log*
+error_res*

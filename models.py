@@ -26,6 +26,7 @@ class Ticket(db.Model):
     cantidad_comidas = db.Column(db.Integer, default=1)
     cantidad_noches = db.Column(db.Integer, default=0)
     preseleccion_no_completo = db.Column(db.Boolean, default=False)
+    id_paciente = db.Column(db.Integer, nullable=True)
     
     def __repr__(self):
         return f'<Ticket {self.id} - {self.paciente}>'
@@ -50,5 +51,6 @@ class Ticket(db.Model):
             'horas_duracion_visita': float(self.horas_duracion_visita) if self.horas_duracion_visita else None,
             'cantidad_comidas': self.cantidad_comidas,
             'cantidad_noches': self.cantidad_noches,
-            'preseleccion_no_completo': self.preseleccion_no_completo
+            'preseleccion_no_completo': self.preseleccion_no_completo,
+            'id_paciente': self.id_paciente
         }

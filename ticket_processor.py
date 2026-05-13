@@ -1,6 +1,7 @@
 import os
 import re
 import json
+from unittest import result
 import sqlalchemy as sa
 from sqlalchemy import text
 from datetime import datetime
@@ -10,6 +11,9 @@ from PIL import Image
 import pdf2image
 from typing import Dict, Any, Optional, List
 import logging
+import traceback
+from datetime import datetime
+import traceback 
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 from prompt_manager import PromptManager
@@ -54,28 +58,35 @@ class TicketProcessor:
         wait=wait_exponential(multiplier=1, min=2, max=10)
     )
     def extract_from_image(self, image_input, page_num: int = 1, validate: bool = True) -> Dict[str, Any]:
-        """Extrae datos del ticket desde una imagen usando Gemini Vision"""
+        """Extrae datos del ticket - SIEMPRE retorna un diccionario, nunca lanza excepción"""
 
         prompt = self.prompt_manager.get_single_ticket_prompt()
 
         # Cargar imagen
         if isinstance(image_input, str):
             if image_input.lower().endswith('.pdf'):
-                images = pdf2image.convert_from_path(image_input, first_page=page_num, last_page=page_num)
-                img = images[0]
+                try:
+                    images = pdf2image.convert_from_path(image_input, first_page=page_num, last_page=page_num)
+                    img = images[0]
+                except Exception as e:
+                    logger.error(f"Error cargando PDF página {page_num}: {e}")
+                    return self._get_error_ticket(page_num, f"Error cargando PDF: {str(e)}")
             else:
-                img = Image.open(image_input)
+                try:
+                    img = Image.open(image_input)
+                except Exception as e:
+                    logger.error(f"Error cargando imagen página {page_num}: {e}")
+                    return self._get_error_ticket(page_num, f"Error cargando imagen: {str(e)}")
         elif isinstance(image_input, Image.Image):
             img = image_input
         else:
-            raise ValueError("image_input debe ser ruta (str) o objeto PIL Image")
+            return self._get_error_ticket(page_num, "Formato de imagen no válido")
 
         try:
-            # 🔧 FORZAR RESPUESTA JSON PURA
             response = self.model.generate_content(
                 [prompt, img],
                 generation_config={
-                    "response_mime_type": "application/json",  # ← CLAVE: obliga a Gemini a devolver JSON válido
+                    "response_mime_type": "application/json",
                     "temperature": 0.1,
                     "max_output_tokens": 2048
                 }
@@ -85,51 +96,85 @@ class TicketProcessor:
             logger.info(f"=== RESPUESTA CRUDA (página {page_num}) ===")
             logger.info(f"Respuesta: {raw_response[:500]}")
 
-            # Ya debería ser JSON puro, pero por seguridad limpiamos
             cleaned_text = self._clean_json_response(raw_response)
+            logger.info(f"Texto limpiado: {cleaned_text}")  # ← Ver qué queda después de limpiar
             data = json.loads(cleaned_text)
-
-            # Normalizar estructura
+            logger.info(f"Datos parseados: {data}")  # ← Ver qué estructura tiene
             data = self._normalize_ticket_data(data)
 
-            # Validar contra BD
             if validate:
                 data = self.protocolo_manager.validate_and_correct_ticket_data(data)
-                # Si no encontró al paciente, retornar dict vacío
+                
                 encontrado = data.get('paciente', {}).get('encontrado', False)
-                logger.info(f"Página {page_num}: paciente encontrado = {encontrado}")
-
+                requiere_seleccion = data.get('paciente', {}).get('requiere_seleccion', False)
+                
+                logger.info(f"Página {page_num}: paciente encontrado = {encontrado}, requiere_seleccion = {requiere_seleccion}")
+                logger.info(f"  - Nombre extraído: {data.get('paciente', {}).get('nombre')}")
+                logger.info(f"  - DNI extraído: {data.get('paciente', {}).get('dni')}")
+                
                 if not encontrado:
-                    logger.warning(f"Página {page_num}: Paciente no encontrado - omitiendo ticket")
-                    return None
+                    data['_requiere_seleccion'] = True
+                    data['_insertar'] = False
+                else:
+                    data['_requiere_seleccion'] = False
+                    data['_insertar'] = True
 
             return data
-            
-        except json.JSONDecodeError as e:
-            error_file = f"error_response_{page_num}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            with open(error_file, 'w', encoding='utf-8') as f:
-                f.write(f"Error: {e}\n\n")
-                f.write(f"Respuesta cruda:\n{raw_response}\n\n")
-                f.write(f"Texto limpiado:\n{cleaned_text}\n")
-            logger.error(f"Respuesta guardada en: {error_file}")
+
         except Exception as e:
-            logger.error(f"Error en página {page_num}: {e}")
-            return None
+            error_msg = str(e)
+            logger.error(f"Error en página {page_num}: {error_msg}")
+
+            # 🔥 RETORNAR UN TICKET CON ERROR, NO LANZAR EXCEPCIÓN
+            return self._get_error_ticket(page_num, error_msg)
+
+    def _get_error_ticket(self, page_num: int, error_msg: str) -> Dict[str, Any]:
+        """Retorna un ticket que representa un error de procesamiento"""
+        return {
+            '_error': True,
+            '_error_message': error_msg,
+            '_pagina': page_num,
+            '_requiere_seleccion': True,
+            '_insertar': False,
+            'paciente': {
+                'encontrado': False,
+                'requiere_seleccion': True,
+                'nombre': f'ERROR: {error_msg[:50]}',
+                'dni': ''
+            },
+            'viaje': {},
+            'totales': {}
+        }
+        
+    def _registrar_error(self, error: Dict[str, Any]) -> None:
+        """Registra el error en un archivo para debug y almacena el último error"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        # Guardar error detallado en archivo
+        error_file = f"error_log_{timestamp}.txt"
+        with open(error_file, 'w', encoding='utf-8') as f:
+            f.write(f"=== ERROR REPORT ===\n")
+            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            f.write(f"Tipo: {error.get('tipo')}\n")
+            f.write(f"Página: {error.get('pagina')}\n")
+            f.write(f"Mensaje: {error.get('mensaje')}\n")
+            if 'detalle' in error:
+                f.write(f"Detalle: {error.get('detalle')}\n")
+            if 'respuesta_cruda' in error:
+                f.write(f"\n--- Respuesta cruda ---\n{error.get('respuesta_cruda')}\n")
+            f.write(f"\n--- Traceback ---\n{error.get('traceback')}\n")
+
+        # Almacenar el último error para enviarlo a la interfaz
+        self._ultimo_error = error
         
     def _normalize_ticket_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Normaliza la estructura de datos del ticket"""
 
-        # Si data ya es None o no es dict, intentar recuperar
-        if not data:
-            logger.warning("Datos vacíos para normalizar")
-            return self._get_empty_ticket()
-
-        if not isinstance(data, dict):
-            logger.warning(f"Datos no son dict: {type(data)}")
-            return self._get_empty_ticket()
-
-        # Estructura por defecto
         normalized = self._get_empty_ticket()
+
+        if not data or not isinstance(data, dict):
+            logger.warning("Datos inválidos para normalizar")
+            return normalized
 
         # Extraer pasaje
         if data.get("pasaje"):
@@ -139,44 +184,63 @@ class TicketProcessor:
         if data.get("fecha_ticket"):
             normalized["fecha_ticket"] = data["fecha_ticket"]
 
-        # Extraer paciente
-        paciente_data = data.get("paciente", {})
-        if isinstance(paciente_data, dict):
-            if paciente_data.get("nombre"):
-                normalized["paciente"]["nombre"] = paciente_data["nombre"]
-            if paciente_data.get("dni"):
-                normalized["paciente"]["dni"] = str(paciente_data["dni"])
-        elif isinstance(paciente_data, list) and len(paciente_data) > 0:
-            if paciente_data[0].get("nombre"):
-                normalized["paciente"]["nombre"] = paciente_data[0]["nombre"]
-            if paciente_data[0].get("dni"):
-                normalized["paciente"]["dni"] = str(paciente_data[0]["dni"])
+        # 🔥 EXTRAER PACIENTE - SOPORTAR AMBOS FORMATOS
+        nombre = None
+        dni = None
+
+        # Formato 1: {"paciente": {"nombre": "...", "dni": "..."}}
+        if "paciente" in data:
+            paciente_data = data["paciente"]
+            if isinstance(paciente_data, dict):
+                nombre = paciente_data.get("nombre")
+                dni = paciente_data.get("dni")
+            elif isinstance(paciente_data, list) and len(paciente_data) > 0:
+                nombre = paciente_data[0].get("nombre")
+                dni = paciente_data[0].get("dni")
+
+        # Formato 2: {"nombre": "...", "dni": "..."} (directo de Gemini)
+        if not nombre and data.get("nombre"):
+            nombre = data.get("nombre")
+        if not dni and data.get("dni"):
+            dni = data.get("dni")
+
+        if nombre:
+            normalized["paciente"]["nombre"] = nombre
+        if dni:
+            normalized["paciente"]["dni"] = str(dni)
 
         # Extraer viaje
         viaje_data = data.get("viaje", {})
         if isinstance(viaje_data, dict):
-            normalized["viaje"]["fecha_viaje"] = viaje_data.get("fecha_viaje", "")
-            normalized["viaje"]["distancia"] = viaje_data.get("distancia")
-            normalized["viaje"]["unidad"] = viaje_data.get("unidad", "")
+            if viaje_data.get("fecha_viaje"):
+                normalized["viaje"]["fecha_viaje"] = viaje_data["fecha_viaje"]
+            if viaje_data.get("distancia"):
+                normalized["viaje"]["distancia"] = viaje_data["distancia"]
+            if viaje_data.get("unidad"):
+                normalized["viaje"]["unidad"] = viaje_data["unidad"]
         elif isinstance(viaje_data, list) and len(viaje_data) > 0:
-            normalized["viaje"]["fecha_viaje"] = viaje_data[0].get("fecha_viaje", "")
-            normalized["viaje"]["distancia"] = viaje_data[0].get("distancia")
-            normalized["viaje"]["unidad"] = viaje_data[0].get("unidad", "")
+            if viaje_data[0].get("fecha_viaje"):
+                normalized["viaje"]["fecha_viaje"] = viaje_data[0]["fecha_viaje"]
+            if viaje_data[0].get("distancia"):
+                normalized["viaje"]["distancia"] = viaje_data[0]["distancia"]
+            if viaje_data[0].get("unidad"):
+                normalized["viaje"]["unidad"] = viaje_data[0]["unidad"]
 
         # Extraer totales
         totales_data = data.get("totales", {})
         if isinstance(totales_data, dict):
-            normalized["totales"]["importe_total"] = totales_data.get("importe_total")
+            if totales_data.get("importe_total"):
+                normalized["totales"]["importe_total"] = totales_data["importe_total"]
         elif isinstance(totales_data, list) and len(totales_data) > 0:
-            normalized["totales"]["importe_total"] = totales_data[0].get("importe_total")
+            if totales_data[0].get("importe_total"):
+                normalized["totales"]["importe_total"] = totales_data[0]["importe_total"]
 
-        logger.info(f"Datos normalizados: paciente={normalized['paciente']['nombre']}, "
-                    f"importe={normalized['totales']['importe_total']}")
+        logger.info(f"Datos normalizados: paciente='{normalized['paciente']['nombre']}', DNI='{normalized['paciente']['dni']}', importe={normalized['totales']['importe_total']}")
 
         return normalized
 
     def _get_empty_ticket(self) -> Dict[str, Any]:
-        """Retorna un ticket vacío"""
+        """Retorna un ticket vacío con toda la estructura necesaria"""
         return {
             "pasaje": "",
             "fecha_ticket": "",
@@ -186,23 +250,28 @@ class TicketProcessor:
         }
     
     def extract_tickets_from_pdf(self, pdf_path: str, validate: bool = True) -> List[Dict[str, Any]]:
-        """Extrae múltiples tickets - solo incluye los que tienen paciente encontrado"""
-
-        images = pdf2image.convert_from_path(pdf_path)
-        logger.info(f"PDF tiene {len(images)} páginas")
-
+        """Extrae múltiples tickets de un PDF"""
+        
+        try:
+            images = pdf2image.convert_from_path(pdf_path)
+            logger.info(f"PDF tiene {len(images)} páginas")
+        except Exception as e:
+            logger.error(f"Error convirtiendo PDF: {e}")
+            return []
+        
         all_tickets = []
-
+        
         for page_num, img in enumerate(images, start=1):
             logger.info(f"Procesando página {page_num} de {len(images)}")
             ticket_data = self.extract_from_image(img, page_num, validate=validate)
-
-            if ticket_data:  # Solo agrega si no es None
+            
+            # 🔥 Siempre agregar (puede ser None, pero extract_from_image nunca retorna None ahora)
+            if ticket_data:
                 all_tickets.append(ticket_data)
             else:
-                logger.warning(f"Página {page_num}: Ticket omitido (paciente no encontrado)")
-
-        logger.info(f"Total de tickets válidos: {len(all_tickets)} de {len(images)} páginas")
+                logger.warning(f"Página {page_num}: No se pudo extraer ticket")
+        
+        logger.info(f"Total de tickets extraídos: {len(all_tickets)} de {len(images)} páginas")
         return all_tickets
 
     def generate_insert_sql(self, data: Dict[str, Any], usuario: str = None) -> str:
@@ -214,6 +283,7 @@ class TicketProcessor:
 
         # Usar el nombre ya corregido (concatenado de BD)
         nombre = paciente.get('nombre', '')
+        id_paciente = paciente.get('persona_id')
         protocolo = paciente.get('protocolo', '')
 
         fecha_viaje = self._convert_date(viaje.get('fecha_viaje', ''))
@@ -229,10 +299,10 @@ class TicketProcessor:
         query = text("""
             INSERT INTO cedir.ticket (
                 paciente, fecha_viaje, fecha_ticket, distancia, unidad, 
-                protocolo, importe_total, pasaje, create_time, usuario
+                protocolo, importe_total, pasaje, create_time, usuario, id_paciente
             ) VALUES (
                 :paciente, :fecha_viaje, :fecha_ticket, :distancia, :unidad,
-                :protocolo, :importe_total, :pasaje, NOW(), :usuario
+                :protocolo, :importe_total, :pasaje, NOW(), :usuario, :id_paciente
             ) RETURNING id
         """)
 
@@ -245,7 +315,8 @@ class TicketProcessor:
             'protocolo': protocolo[:100] if protocolo else None,
             'importe_total': importe_total,
             'pasaje': pasaje[:150] if pasaje else None,
-            'usuario': usuario_registro[:100] if usuario_registro else None
+            'usuario': usuario_registro[:100] if usuario_registro else None,
+            'id_paciente': id_paciente
         }
 
         compiled = query.bindparams(**params).compile(
@@ -433,52 +504,120 @@ class TicketProcessor:
             'tickets_procesados': 0,
             'tickets_insertados': 0,
             'tickets_omitidos': 0,
-            'tickets': []
+            'tickets_pendientes': [],  
+            'tickets_automaticos': [],
+            'tickets_con_error': [],
+            'errores': [],
+            'tickets': [],
+            'archivo_movido': False,
+            'message': ''
         }
 
         try:
-            # Extraer datos (solo los válidos)
+            # Extraer datos
             if file_path.lower().endswith('.pdf'):
                 tickets_data = self.extract_tickets_from_pdf(file_path, validate=validate)
             else:
                 ticket_data = self.extract_from_image(file_path, validate=validate)
                 tickets_data = [ticket_data] if ticket_data else []
 
-            result['tickets_procesados'] = len(tickets_data)
+                    # 🔥 CAPTURAR ERRORES DE EXTRACCIÓN
+            for td in tickets_data:
+                if td and '_error' in td:
+                    result['errores'].append(td['_error'])
 
+            # Filtrar tickets válidos (sin error)
+            valid_tickets = [td for td in tickets_data if td and '_error' not in td]
+            result['tickets_procesados'] = len(valid_tickets)
+
+            if len(tickets_data) > 0 and len(valid_tickets) == 0:
+                # Todos los tickets tienen error
+                result['message'] = f"Error en extracción: {len(result['errores'])} error(es)"
+                result['success'] = False
+                return result
+            logger.info(f"Tickets extraídos: {len(tickets_data)}")
+
+            # Procesar cada ticket
             for idx, ticket_data in enumerate(tickets_data, start=1):
-                logger.info(f"Insertando ticket {idx} de {len(tickets_data)}")
+                logger.info(f"Procesando ticket {idx} de {len(tickets_data)}")
+                
+                            # 🔥 Verificar si es un ticket con error
+                if ticket_data.get('_error'):
+                    result['tickets_con_error'].append({
+                        'index': idx,
+                        'error': ticket_data.get('_error_message', 'Error desconocido'),
+                        'pagina': ticket_data.get('_pagina', idx)
+                    })
+                    logger.error(f"❌ Ticket {idx} tiene error: {ticket_data.get('_error_message')}")
+                    continue
 
-                # Generar SQL (ya tiene el nombre corregido y protocolo)
-                sql_query = self.generate_insert_sql(ticket_data, usuario)
-                logger.info(f"SQL para ticket {idx}: {sql_query[:200]}...")
+                # Verificar si se puede insertar automáticamente
+                insertar_auto = ticket_data.get('_insertar', False)
 
-                insert_result = self.insert_ticket(sql_query, file_path)
+                if insertar_auto:
+                    # ✅ Inserción automática
+                    sql_query = self.generate_insert_sql(ticket_data, usuario)
+                    insert_result = self.insert_ticket(sql_query, file_path)
 
-                ticket_info = {
-                    'index': idx,
-                    'extracted_data': ticket_data,
-                    'insert_result': insert_result
-                }
-
-                if insert_result['success']:
-                    result['tickets_insertados'] += 1
-                    ticket_info['ticket_id'] = insert_result.get('ticket_id')
+                    if insert_result['success']:
+                        result['tickets_insertados'] += 1
+                        result['tickets_automaticos'].append({
+                            'index': idx,
+                            'ticket_id': insert_result.get('ticket_id'),
+                            'nombre': ticket_data.get('paciente', {}).get('nombre', '')
+                        })
+                        logger.info(f"✅ Ticket {idx} insertado automáticamente")
+                    else:
+                        result['errores'].append({
+                            'ticket': idx,
+                            'error': insert_result.get('message')
+                        })
                 else:
-                    result['tickets_omitidos'] += 1
+                    # ⏳ Requiere selección manual
+                    result['tickets_pendientes'].append({
+                        'index': idx,
+                        'nombre': ticket_data.get('paciente', {}).get('nombre', ''),
+                        'dni': ticket_data.get('paciente', {}).get('dni', ''),
+                        'candidatos': ticket_data.get('paciente', {}).get('candidatos', []),
+                        'extracted_data': ticket_data
+                    })
+                    logger.warning(f"⚠️ Ticket {idx} pendiente de selección manual")
 
-                result['tickets'].append(ticket_info)
+            result['success'] = True  # Siempre true porque procesamos todos
+            result['message'] = f"Procesados {result['tickets_procesados']} tickets: {result['tickets_insertados']} insertados automáticamente, {len(result['tickets_pendientes'])} pendientes de selección"
 
-            result['success'] = result['tickets_insertados'] > 0
-            result['message'] = f"Procesados: {result['tickets_insertados']} insertados, {result['tickets_omitidos']} omitidos"
-
-            if move_to_processed:
+            # No mover archivo si hay pendientes (para poder reprocesar)
+            if move_to_processed and result['tickets_insertados'] > 0 and len(result['tickets_pendientes']) == 0:
                 processed_path = self.move_to_processed(file_path)
                 result['processed_path'] = processed_path
+                result['archivo_movido'] = True
+                
+            if result['tickets_con_error']:
+                result['message'] = f"Procesados: {result['tickets_insertados']} insertados, {len(result['tickets_con_error'])} con error de API, {len(result['tickets_pendientes'])} pendientes"
+                result['success'] = False
+            else:
+                result['message'] = f"Procesados: {result['tickets_insertados']} insertados, {len(result['tickets_pendientes'])} pendientes"
+                result['success'] = True
 
+            return result
+
+        
         except Exception as e:
+            import traceback
+            error_detalle = {
+                'tipo': type(e).__name__,
+                'mensaje': str(e),
+                'traceback': traceback.format_exc(),
+                'fase': 'procesamiento_archivo'
+            }
+            result['errores'].append(error_detalle)
             result['message'] = f'Error en procesamiento: {str(e)}'
+            result['success'] = False
             logger.exception("Error procesando archivo")
+
+            # No mover archivo si hubo error
+            if os.path.exists(file_path) and move_to_processed:
+                logger.info(f"Archivo {file_path} permanece en uploads para reintentar")
 
         return result
     
@@ -659,20 +798,49 @@ class FlaskTicketProcessor:
         app.ticket_processor = self
     
     def process_uploaded_file(self, file_path: str, usuario: str = None, 
-                               move_to_processed: bool = True, 
-                               validate_protocolo: bool = True) -> Dict[str, Any]:
-        """Procesa un archivo subido
-        
-        Args:
-            file_path: Ruta del archivo
-            usuario: Nombre del usuario logueado (full_name)
-            move_to_processed: Si mover a processed
-            validate_protocolo: Si validar protocolos
-        """
+                           move_to_processed: bool = True, 
+                           validate_protocolo: bool = True) -> Dict[str, Any]:
+        """Procesa un archivo subido - SIEMPRE retorna un diccionario"""
+
+        # Resultado por defecto (en caso de error)
+        default_result = {
+            'success': False,
+            'file_path': file_path,
+            'usuario': usuario,
+            'tickets_procesados': 0,
+            'tickets_insertados': 0,
+            'tickets_omitidos': 0,
+            'errores': [],
+            'tickets': [],
+            'archivo_movido': False,
+            'message': 'Error desconocido en el procesador'
+        }
+
         if not self.processor:
-            raise RuntimeError("Procesador no inicializado")
-        
-        return self.processor.process_multiple_tickets(file_path, usuario, move_to_processed, validate_protocolo)
+            default_result['message'] = 'Procesador no inicializado'
+            default_result['errores'].append({'error': 'Procesador no inicializado'})
+            return default_result
+
+        try:
+            result = self.processor.process_multiple_tickets(
+                file_path, usuario, move_to_processed, validate_protocolo
+            )
+
+            # Asegurar que el resultado es un diccionario
+            if result is None:
+                return default_result
+
+            return result
+
+        except Exception as e:
+            import traceback
+            default_result['message'] = f'Error en procesamiento: {str(e)}'
+            default_result['errores'].append({
+                'tipo': type(e).__name__,
+                'mensaje': str(e),
+                'traceback': traceback.format_exc()
+            })
+            return default_result
     
     def get_protocolo_suggestions(self, partial: str, limit: int = 10) -> List[str]:
         """Obtiene sugerencias de protocolo para autocompletar"""
