@@ -6,3 +6,5 @@ migrations/
 uploads/
 error_log*
 error_res*
+/static/incoming/
+/static/processed/

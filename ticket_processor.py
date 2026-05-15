@@ -105,12 +105,49 @@ class TicketProcessor:
             if validate:
                 data = self.protocolo_manager.validate_and_correct_ticket_data(data)
                 
+                # =====================================================
+                # 📋 LOG COMPLETO DE DATOS EXTRAÍDOS DEL TICKET
+                # =====================================================
+                logger.info("=" * 60)
+                logger.info(f"📋 DATOS EXTRAÍDOS DEL TICKET (página {page_num})")
+                logger.info("=" * 60)
+                
+                # Paciente
+                paciente = data.get('paciente', {})
+                logger.info(f"👤 PACIENTE:")
+                logger.info(f"   - Nombre: {paciente.get('nombre', 'N/A')}")
+                logger.info(f"   - Apellido: {paciente.get('apellido', 'N/A')}")
+                logger.info(f"   - DNI: {paciente.get('dni', 'N/A')}")
+                logger.info(f"   - Encontrado: {paciente.get('encontrado', False)}")
+                logger.info(f"   - Protocolo: {paciente.get('protocolo', 'N/A')}")
+                
+                # Viaje
+                viaje = data.get('viaje', {})
+                logger.info(f"🚗 VIAJE:")
+                logger.info(f"   - Fecha: {viaje.get('fecha_viaje', 'N/A')}")
+                logger.info(f"   - Distancia: {viaje.get('distancia', 'N/A')} {viaje.get('unidad', '')}")
+                logger.info(f"   - Desde: {viaje.get('desde', 'N/A')}")
+                logger.info(f"   - Hasta: {viaje.get('hasta', 'N/A')}")
+                
+                # Totales
+                totales = data.get('totales', {})
+                logger.info(f"💰 TOTALES:")
+                logger.info(f"   - Importe total: ${totales.get('importe_total', 'N/A')}")
+                logger.info(f"   - Importe passagem: ${totales.get('importe_pasaje', 'N/A')}")
+                logger.info(f"   - Importe peaje: ${totales.get('importe_peaje', 'N/A')}")
+                
+                # Pasaje
+                logger.info(f"🎫 PASAJE:")
+                logger.info(f"   - Pasaje: {data.get('pasaje', 'N/A')}")
+                
+                # Fecha ticket
+                logger.info(f"📅 FECHA TICKET: {data.get('fecha_ticket', 'N/A')}")
+                logger.info("=" * 60)
+                
                 encontrado = data.get('paciente', {}).get('encontrado', False)
                 requiere_seleccion = data.get('paciente', {}).get('requiere_seleccion', False)
                 
                 logger.info(f"Página {page_num}: paciente encontrado = {encontrado}, requiere_seleccion = {requiere_seleccion}")
-                logger.info(f"  - Nombre extraído: {data.get('paciente', {}).get('nombre')}")
-                logger.info(f"  - DNI extraído: {data.get('paciente', {}).get('dni')}")
                 
                 if not encontrado:
                     data['_requiere_seleccion'] = True
@@ -539,9 +576,31 @@ class TicketProcessor:
 
             # Procesar cada ticket
             for idx, ticket_data in enumerate(tickets_data, start=1):
-                logger.info(f"Procesando ticket {idx} de {len(tickets_data)}")
+                # =====================================================
+                # 📋 LOG DETALLADO DE CADA TICKET PROCESADO
+                # =====================================================
+                logger.info("-" * 60)
+                logger.info(f"🎫 PROCESANDO TICKET {idx}/{len(tickets_data)}")
+                logger.info("-" * 60)
                 
-                            # 🔥 Verificar si es un ticket con error
+                # Mostrar datos del paciente
+                paciente = ticket_data.get('paciente', {})
+                logger.info(f"👤 Paciente: {paciente.get('nombre', 'N/A')} {paciente.get('apellido', '')}")
+                logger.info(f"   DNI: {paciente.get('dni', 'N/A')} | Protocolo: {paciente.get('protocolo', 'N/A')}")
+                
+                # Mostrar datos del viaje
+                viaje = ticket_data.get('viaje', {})
+                logger.info(f"🚗 Viaje: {viaje.get('distancia', 'N/A')} {viaje.get('unidad', '')} - {viaje.get('fecha_viaje', 'N/A')}")
+                
+                # Mostrar totales
+                totales = ticket_data.get('totales', {})
+                logger.info(f"💰 Importe: ${totales.get('importe_total', 'N/A')} | Pasaje: ${totales.get('importe_pasaje', 'N/A')}")
+                
+                # Mostrar pasaje y fecha
+                logger.info(f"🎫 Pasaje: {ticket_data.get('pasaje', 'N/A')}")
+                logger.info(f"📅 Fecha ticket: {ticket_data.get('fecha_ticket', 'N/A')}")
+                
+                # 🔥 Verificar si es un ticket con error
                 if ticket_data.get('_error'):
                     result['tickets_con_error'].append({
                         'index': idx,

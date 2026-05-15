@@ -243,8 +243,8 @@ def abm():
         return redirect(url_for('abm'))
     
     # ========== PROCESAR GET (cargar página) ==========
-    # Recuperar pendientes de session
-    tickets_pendientes = session.pop('tickets_pendientes', [])
+    # Recuperar pendientes de session (NO hacer pop, mantenerlos hasta que se completen)
+    tickets_pendientes = session.get('tickets_pendientes', [])
     error_procesamiento = session.pop('error_procesamiento', None)
     
     # Obtener parámetros de búsqueda
@@ -302,51 +302,187 @@ def buscar_candidatos():
     nombre = data.get('nombre', '')
     dni = data.get('dni', '')
     
+    logger.info(f"Buscando candidatos: ticket_id={ticket_id}, nombre='{nombre}', dni='{dni}'")
+    
     if not ticket_processor or not ticket_processor.processor:
-        return jsonify({'error': 'Procesador no disponible'}), 500
+        return jsonify({'error': 'Procesador no disponible', 'candidates': []}), 500
     
-    candidates = ticket_processor.processor.protocolo_manager.buscar_candidatos_similares(
-        nombre_busqueda=nombre,
-        dni_busqueda=dni
-    )
-    
-    # Guardar en sesión el ticket pendiente para actualizar después
-    session['pending_ticket'] = {
-        'ticket_id': ticket_id,
-        'nombre_original': nombre,
-        'dni_original': dni
-    }
-    
-    return jsonify({'candidates': candidates})
+    try:
+        candidates = ticket_processor.processor.protocolo_manager.buscar_candidatos_similares(
+            nombre_busqueda=nombre,
+            dni_busqueda=dni,
+            limit=10
+        )
+        
+        logger.info(f"Se encontraron {len(candidates)} candidatos para ticket_id={ticket_id}")
+        return jsonify({'candidates': candidates, 'success': True})
+    except Exception as e:
+        logger.error(f"Error buscando candidatos: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e), 'candidates': [], 'success': False}), 500
 
 @app.route('/seleccionar_paciente', methods=['POST'])
 @supabase_helper.login_required
 def seleccionar_paciente():
-    """Actualiza el ticket con el paciente seleccionado manualmente"""
+    """Inserta el ticket con el paciente seleccionado manualmente"""
     data = request.get_json()
-    ticket_id = data.get('ticket_id')
+    ticket_index = data.get('ticket_id')  # Este es el índice del ticket pendiente
     paciente_id = data.get('paciente_id')
     nombre = data.get('nombre')
     apellido = data.get('apellido')
     protocolo = data.get('protocolo')
+    nro_doc = data.get('nro_doc')
+    usuario = supabase_helper.get_user_display_name(supabase_helper.get_current_user())
+    
+    logger.info(f"📋 Selección manual de paciente: ticket_index={ticket_index}, paciente='{nombre} {apellido}', protocolo='{protocolo}'")
     
     try:
-        # Actualizar el ticket con los datos del paciente seleccionado
-        ticket = Ticket.query.get(ticket_id)
-        if ticket:
-            ticket.paciente = f"{nombre} {apellido}"
-            ticket.protocolo = protocolo
-            db.session.commit()
+        # Obtener los datos extraídos del ticket desde la sesión
+        tickets_pendientes = session.get('tickets_pendientes', [])
+        logger.debug(f"Tickets pendientes en sesión: {len(tickets_pendientes)}")
+        
+        # Debug: mostrar todos los índices disponibles
+        indices_disponibles = [tp.get('index') for tp in tickets_pendientes]
+        logger.debug(f"Índices disponibles: {indices_disponibles}")
+        logger.debug(f"Tipo de ticket_index recibido: {type(ticket_index)}, valor: {ticket_index}")
+        
+        # Normalizar ticket_index a entero para la comparación
+        try:
+            ticket_index_int = int(ticket_index)
+        except (ValueError, TypeError):
+            ticket_index_int = ticket_index
             
-            # Limpiar sesión
-            session.pop('pending_ticket', None)
+        # Buscar el ticket pendiente por índice
+        ticket_pendiente = None
+        for tp in tickets_pendientes:
+            tp_index = tp.get('index')
+            logger.debug(f"Comparando: tp_index={tp_index} (tipo: {type(tp_index)}) vs ticket_index_int={ticket_index_int} (tipo: {type(ticket_index_int)})")
+            if tp_index == ticket_index_int:
+                ticket_pendiente = tp
+                break
+        
+        if not ticket_pendiente:
+            logger.error(f"❌ Ticket pendiente no encontrado con índice {ticket_index} (normalizado: {ticket_index_int})")
+            return jsonify({'success': False, 'message': f'Ticket pendiente no encontrado. Índices disponibles: {indices_disponibles}'}), 404
+        
+        # Obtener los datos extraídos
+        extracted_data = ticket_pendiente.get('extracted_data', {})
+        logger.debug(f"Datos extraídos obtenidos: {list(extracted_data.keys())}")
+        
+        # Debug: mostrar datos completos del ticket para verificar
+        logger.info(f"=== DATOS EXTRAÍDOS DEL TICKET ===")
+        logger.info(f"  paciente: {extracted_data.get('paciente')}")
+        logger.info(f"  viaje: {extracted_data.get('viaje')}")
+        logger.info(f"  totales: {extracted_data.get('totales')}")
+        logger.info(f"  pasaje: {extracted_data.get('pasaje')}")
+        logger.info(f"  fecha_ticket: {extracted_data.get('fecha_ticket')}")
+        logger.info(f"  nro_doc: {extracted_data.get('nro_doc')}")
+        logger.info(f"  === FIN DATOS EXTRAÍDOS ===")
+        
+        # Actualizar el extracted_data con los datos del paciente seleccionado
+        # Usar el nombre y apellido juntos para el campo "paciente"
+        nombre_completo = f"{nombre} {apellido}".strip()
+        
+        extracted_data['paciente'] = {
+            'nombre': nombre_completo,
+            'apellido': apellido,
+            'persona_id': paciente_id,
+            'protocolo': protocolo,
+            'nro_doc': nro_doc,
+            'encontrado': True,
+            'encontrado_por': 'manual'
+        }
+        
+        logger.info(f"✏️ Paciente actualizado en extracted_data: {nombre_completo} (ID: {paciente_id})")
+        logger.info(f"✏️ Datos del ticket a insertar - viaje: {extracted_data.get('viaje')}, totales: {extracted_data.get('totales')}")
+        
+        # Generar SQL e insertar
+        if not ticket_processor or not ticket_processor.processor:
+            logger.error("❌ Procesador no disponible")
+            return jsonify({'success': False, 'message': 'Procesador no disponible'}), 500
+        
+        sql_query = ticket_processor.processor.generate_insert_sql(extracted_data, usuario)
+        logger.info(f"SQL generado: {sql_query}")
+        
+        insert_result = ticket_processor.processor.insert_ticket(sql_query, '')
+        
+        if insert_result['success']:
+            # Remover el ticket de los pendientes usando comparación consistente
+            ticket_index_int = int(ticket_index) if ticket_index else 0
+            tickets_pendientes = []
+            for tp in session.get('tickets_pendientes', []):
+                tp_index = tp.get('index')
+                # Convertir a entero para comparación consistente
+                tp_index_int = int(tp_index) if tp_index else 0
+                if tp_index_int != ticket_index_int:
+                    tickets_pendientes.append(tp)
             
-            return jsonify({'success': True, 'message': 'Ticket actualizado correctamente'})
+            session['tickets_pendientes'] = tickets_pendientes
+            session.modified = True
+            
+            logger.info(f"DEBUG - Tickets después de eliminar: {[tp.get('index') for tp in tickets_pendientes]}")
+            
+            logger.info(f"✅ Ticket insertado manualmente: {nombre} {apellido} (usuario: {usuario})")
+            logger.info(f"📊 Tickets pendientes restantes: {len(tickets_pendientes)}")
+            
+            return jsonify({
+                'success': True, 
+                'message': f'Ticket de {nombre} {apellido} insertado correctamente en la base de datos',
+                'remaining_pending': len(tickets_pendientes)
+            })
         else:
-            return jsonify({'success': False, 'message': 'Ticket no encontrado'}), 404
+            error_msg = insert_result.get('message', 'Error desconocido')
+            logger.error(f"❌ Error insertando ticket: {error_msg}")
+            logger.error(f"SQL que falló: {sql_query}")
+            
+            return jsonify({
+                'success': False, 
+                'message': f"Error en inserción: {error_msg}"
+            }), 500
+            
     except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 500
+        logger.error(f"❌ Error en seleccionar_paciente: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Error interno: {str(e)}'}), 500
+
+@app.route('/eliminar_pendiente', methods=['POST'])
+@supabase_helper.login_required
+def eliminar_pendiente():
+    """Elimina un ticket pendiente de la sesión sin guardarlo en la base de datos"""
+    data = request.get_json()
+    ticket_index = data.get('ticket_index')
+    
+    logger.info(f"🗑️ Eliminando ticket pendiente con índice: {ticket_index}")
+    
+    try:
+        tickets_pendientes = session.get('tickets_pendientes', [])
+        
+        # Verificar que el ticket existe
+        ticket_encontrado = None
+        for tp in tickets_pendientes:
+            if tp.get('index') == ticket_index:
+                ticket_encontrado = tp
+                break
+        
+        if not ticket_encontrado:
+            logger.error(f"❌ Ticket pendiente no encontrado con índice {ticket_index}")
+            return jsonify({'success': False, 'message': 'Ticket pendiente no encontrado'}), 404
+        
+        # Remover el ticket de los pendientes
+        tickets_pendientes = [tp for tp in tickets_pendientes if tp.get('index') != ticket_index]
+        session['tickets_pendientes'] = tickets_pendientes
+        session.modified = True
+        
+        logger.info(f"✅ Ticket pendiente eliminado (índice: {ticket_index})")
+        logger.info(f"📊 Tickets pendientes restantes: {len(tickets_pendientes)}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Ticket pendiente eliminado correctamente',
+            'remaining_pending': len(tickets_pendientes)
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Error en eliminar_pendiente: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Error interno: {str(e)}'}), 500
 
 @app.route('/limpiar_uploads_huérfanos')
 @supabase_helper.login_required

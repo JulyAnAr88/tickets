@@ -2,37 +2,62 @@
 
 {% block content %}
 <div class="row">
-    <!-- ========== MENSAJES FLASH ========== -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    {% for category, message in messages %}
-    <div class="alert alert-{{ category if category != 'message' else 'info' }} alert-dismissible fade show"
-        role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
+    <!-- Los mensajes flash ya se muestran en base.html -->
     <!-- ========== MODAL PARA SELECCIÓN DE PACIENTE ========== -->
     <div class="modal fade" id="seleccionarPacienteModal" tabindex="-1" aria-labelledby="seleccionarPacienteModalLabel"
         aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header bg-warning">
+                <div class="modal-header bg-warning text-dark">
                     <h5 class="modal-title" id="seleccionarPacienteModalLabel">
-                        <i class="bi bi-question-circle"></i> Seleccionar Paciente
+                        <i class="bi bi-question-circle"></i> Paciente no identificado
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p>No se encontró una coincidencia exacta. Seleccione el paciente correcto:</p>
-                    <div class="alert alert-info">
-                        <strong>Nombre extraído:</strong> <span id="modalNombre"></span><br>
-                        <strong>DNI extraído:</strong> <span id="modalDni"></span>
+                    <div class="mb-4">
+                        <h6 class="text-muted text-uppercase mb-3">
+                            <i class="bi bi-pencil"></i> Datos extraídos del ticket (editable)
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card bg-light border-0 mb-3">
+                                    <div class="card-body">
+                                        <small class="text-muted d-block mb-2">Nombre extraído:</small>
+                                        <input type="text" class="form-control form-control-sm" 
+                                            id="modalNombre" placeholder="Nombre" value="">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light border-0 mb-3">
+                                    <div class="card-body">
+                                        <small class="text-muted d-block mb-2">DNI extraído:</small>
+                                        <input type="text" class="form-control form-control-sm" 
+                                            id="modalDni" placeholder="DNI" value="">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <button class="btn btn-sm btn-outline-secondary w-100" id="btnBuscarDeNuevo">
+                                    <i class="bi bi-arrow-clockwise"></i> Buscar de nuevo con datos editados
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div id="candidatosList" class="list-group">
-                        <!-- Los candidatos se cargarán aquí -->
+
+                    <hr>
+
+                    <div>
+                        <h6 class="text-muted text-uppercase mb-3">
+                            <i class="bi bi-search"></i> Candidatos similares
+                        </h6>
+                        <p class="text-muted small mb-3">Selecciona el paciente correcto de la base de datos:</p>
+                        <div id="candidatosList" class="list-group">
+                            <!-- Los candidatos se cargarán aquí -->
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -137,33 +162,49 @@
     <div class="col-md-12 mb-4">
         <div class="card border-warning">
             <div class="card-header bg-warning text-dark">
-                <h5 class="mb-0">
-                    <i class="bi bi-exclamation-triangle"></i> Pacientes no identificados ({{ tickets_pendientes|length
-                    }})
-                </h5>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="bi bi-exclamation-triangle"></i> Pacientes no identificados ({{ tickets_pendientes|length }})
+                        </h5>
+                        <small class="text-muted">Necesitan selección manual para completar la inserción</small>
+                    </div>
+                </div>
             </div>
             <div class="card-body">
-                <p>Los siguientes pacientes no se encontraron automáticamente. Selecciona una opción para cada uno:</p>
+                <p class="mb-3">Los siguientes pacientes no se encontraron automáticamente. Selecciona la opción correcta para cada uno:</p>
                 <div class="table-responsive">
-                    <table class="table table-sm">
-                        <thead>
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light">
                             <tr>
-                                <th>#</th>
+                                <th width="50">#</th>
                                 <th>Nombre extraído</th>
                                 <th>DNI extraído</th>
-                                <th>Acción</th>
+                                <th width="200">Acción</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for pendiente in tickets_pendientes %}
-                            <tr>
-                                <td>{{ pendiente.index }}</td>
-                                <td>{{ pendiente.nombre or '(no especificado)' }}</td>
-                                <td>{{ pendiente.dni or '(no especificado)' }}</td>
+                            <tr class="align-middle">
                                 <td>
-                                    <button class="btn btn-sm btn-primary"
-                                        onclick="mostrarSeleccionPaciente({{ pendiente.index }}, {{ pendiente.nombre|tojson }}, {{ pendiente.dni|tojson }})">
+                                    <span class="badge bg-warning text-dark">{{ pendiente.index }}</span>
+                                </td>
+                                <td>
+                                    <strong>{{ pendiente.nombre or '(no especificado)' }}</strong>
+                                </td>
+                                <td>
+                                    <code>{{ pendiente.dni or '(no especificado)' }}</code>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary me-2 btn-buscar-coincidencias"
+                                        data-index="{{ pendiente.index }}"
+                                        data-nombre="{{ pendiente.nombre|e }}"
+                                        data-dni="{{ pendiente.dni|e }}">
                                         <i class="bi bi-search"></i> Buscar coincidencias
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger btn-eliminar-pendiente"
+                                        data-index="{{ pendiente.index }}">
+                                        <i class="bi bi-trash"></i>
                                     </button>
                                 </td>
                             </tr>
