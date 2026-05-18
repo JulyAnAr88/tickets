@@ -5,6 +5,7 @@ from flask import Flask, json, render_template, request, redirect, url_for, flas
 from werkzeug.utils import secure_filename
 from config import Config
 from models import db, Ticket
+from sqlalchemy import text
 import supabase_helper
 from forms import TicketForm, BuscarForm, ImagenForm
 from ticket_processor import FlaskTicketProcessor
@@ -701,7 +702,7 @@ def editar(id):
 @app.route('/eliminar/<int:id>')
 @supabase_helper.login_required
 def eliminar(id):
-    """Eliminar ticket"""
+    """Eliminar ticket (simple, sin reintegros)"""
     ticket = Ticket.query.get_or_404(id)
     
     try:
@@ -713,6 +714,61 @@ def eliminar(id):
         flash(f'Error al eliminar: {str(e)}', 'danger')
     
     return redirect(url_for('abm'))
+
+@app.route('/eliminar_con_reintegros/<int:id>', methods=['POST'])
+@supabase_helper.login_required
+def eliminar_con_reintegros(id):
+    """Eliminar ticket Y sus reintegros asociados (borrado en cascada)"""
+    logger.info(f"🗑️ Eliminando ticket {id} con reintegros...")
+    
+    ticket = Ticket.query.get_or_404(id)
+    
+    try:
+        # Obtener el esquema actual
+        esquema_actual = current_app.config.get('DB_SCHEMA', 'cedir')
+        
+        # Verificar si hay reintegros asociados ANTES de eliminar
+        reintegros_count = 0
+        try:
+            reintegros_count = db.session.execute(
+                text(f"SELECT COUNT(*) FROM {esquema_actual}.ticket_procesado WHERE ticket_id = :ticket_id"),
+                {'ticket_id': ticket.id}
+            ).scalar() or 0
+            logger.info(f"📊 Reinentos asociados encontrados: {reintegros_count}")
+        except Exception as e:
+            logger.warning(f"⚠️ Error consultando reintegros: {e}")
+        
+        # Primero eliminar los reintegros manualmente (por si el trigger no funciona)
+        if reintegros_count > 0:
+            try:
+                result = db.session.execute(
+                    text(f"DELETE FROM {esquema_actual}.ticket_procesado WHERE ticket_id = :ticket_id"),
+                    {'ticket_id': ticket.id}
+                )
+                logger.info(f"✅ Eliminados {result.rowcount} reintegros manualmente")
+            except Exception as e:
+                logger.warning(f"⚠️ Error eliminando reintegros manualmente: {e}")
+        
+        # Eliminar ticket
+        db.session.delete(ticket)
+        db.session.commit()
+        logger.info(f"✅ Ticket {id} eliminado correctamente")
+        
+        if reintegros_count > 0:
+            flash(f'Ticket y {reintegros_count} reintegro(s) relacionado(s) eliminados', 'success')
+        else:
+            flash('Ticket eliminado exitosamente', 'success')
+            
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"❌ Error al eliminar ticket {id}: {e}")
+        flash(f'Error al eliminar: {str(e)}', 'danger')
+    
+    return redirect(url_for('abm'))
+
+def get_db_schema():
+    """Obtiene el esquema de base de datos actual desde la configuración"""
+    return current_app.config.get('DB_SCHEMA', 'cedir')
 
 @app.route('/procesar/<int:id>', methods=['POST'])
 @supabase_helper.login_required
@@ -859,7 +915,7 @@ def api_protocolos_suggestions():
 def superset():
     """Vista para embeber dashboard de Superset"""
     guest_token = generate_guest_token(1)
-    dashboard_url = f"{SUPERSET_URL}/superset/dashboard/1/?standalone=true&guest_token={guest_token}"
+    dashboard_url = f"{SUPERSET_URL}/superset/dashboard/1/?standalone=true&expand_filters=0&guest_token={guest_token}"
     
     return render_template('superset_dashboard.html', 
                          dashboard_url=dashboard_url,
@@ -867,7 +923,90 @@ def superset():
                          dashboard_id=1,
                          user=supabase_helper.get_current_user())
 
+# =====================================================
+# Rutas de Autenticación con Google OAuth
+# =====================================================
+
+@app.route('/auth/google')
+def auth_google():
+    """Redirigir a Google para autenticación OAuth"""
+    try:
+        # Construir la URL de autorización de Google
+        from urllib.parse import urlencode
+        
+        # Obtener la URL de callback
+        callback_url = url_for('auth_google_callback', _external=True)
+        
+        # Parámetros para Google OAuth
+        params = {
+            'client_id': current_app.config.get('SUPABASE_KEY', ''),  # Usar como referencia
+            'redirect_uri': callback_url,
+            'response_type': 'code',
+            'scope': 'email profile',
+            'access_type': 'offline',
+            'prompt': 'consent'
+        }
+        
+        # En Supabase, el flujo real se maneja a través de su URL de autenticación
+        # Redirigir al login de Supabase con provider=google
+        supabase_url = current_app.config.get('SUPABASE_URL', '')
+        auth_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={callback_url}"
+        
+        logger.info(f"🔐 Redirigiendo a Google Auth: {auth_url}")
+        
+        return redirect(auth_url)
+        
+    except Exception as e:
+        logger.error(f"Error en autenticación Google: {e}")
+        flash(f'Error al iniciar sesión con Google: {str(e)}', 'danger')
+        return redirect(url_for('login'))
+
+@app.route('/auth/google/callback')
+def auth_google_callback():
+    """Callback después de autenticación con Google"""
+    try:
+        # El token viene en la URL como código que debe intercambiarse
+        # Por ahora, simplemente verificamos si hay un error o redirigimos al login
+        error = request.args.get('error')
+        
+        if error:
+            flash(f'Error de autenticación: {error}', 'danger')
+            return redirect(url_for('login'))
+        
+        # Si hay código, intentar trocar por sesión
+        code = request.args.get('code')
+        if code:
+            # Intercambiar código por sesión (esto requiere configuración en Supabase)
+            flash('Autenticación exitosa. Por favor, iniciá sesión.', 'success')
+        
+        return redirect(url_for('abm'))
+        
+    except Exception as e:
+        logger.error(f"Error en callback de Google: {e}")
+        flash(f'Error en autenticación: {str(e)}', 'danger')
+        return redirect(url_for('login'))
+
+@app.route('/auth/logout')
+@supabase_helper.login_required
+def auth_logout():
+    """Cerrar sesión"""
+    try:
+        # Limpiar session
+        session.clear()
+        flash('Sesión cerrada correctamente', 'success')
+    except Exception as e:
+        logger.error(f"Error al cerrar sesión: {e}")
+    
+    return redirect(url_for('login'))
+
 if __name__ == '__main__':
     with app.app_context():
+        # Establecer el esquema de base de datos
+        esquema = app.config.get('DB_SCHEMA', 'cedir')
+        print(f"🔧 Usando esquema de base de datos: {esquema}")
+        
+        # Establecer search_path para las consultas
+        db.session.execute(text(f"SET search_path TO {esquema}"))
+        
         db.create_all()
     app.run(debug=True, host='0.0.0.0', port=5151)

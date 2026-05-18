@@ -124,6 +124,22 @@ http://localhost:5151
 ✅ Logs detallados para auditoría
 ✅ Session management seguro
 
+### 🤖 AI Skills Security Posture
+
+The project uses AI skills installed via `npx autoskills`. One skill — `python-executor` — has elevated capabilities and required security mitigations:
+
+| Risk | Mitigation | Status |
+|------|-----------|--------|
+| Raw GitHub install link for `belt` CLI | Replaced with official docs URL + human-review warning | ✅ Applied |
+| Arbitrary Python code execution | Documented warning: only execute trusted code | ✅ Applied |
+| Network access via pre-installed libs (`requests`, `httpx`, `aiohttp`) | Documented warning in skill + clarified sandboxed remote execution | ✅ Applied |
+| Local execution misconception | Added note that code runs on inference.sh sandbox, not local machine | ✅ Applied |
+
+**Verification:**
+- `belt` CLI not installed locally — skill operates via remote sandbox only
+- Install script references official inference.sh documentation (`https://inference.sh/docs/apps/install`)
+- Security warnings section added to `.agents/skills/python-executor/SKILL.md`
+
 ---
 
 ## 📊 Métricas

@@ -11,99 +11,95 @@
     <script src="{{ url_for('static', filename='js/darkmode.js') }}"></script>
 </head>
 <body>
-    <!-- Barra superior con logos y menú al estilo CEDIR -->
-    <div class="top-bar">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <div class="logo-area">
-                        <a href="{{ url_for('abm') }}" class="navbar-brand">
+    <!-- Barra de navegación al estilo cedirssf.com -->
+    <nav class="navbar navbar-expand-lg main-nav">
+        <div class="container-fluid px-4">
+            <div class="row w-100 align-items-center">
+                <!-- PARTE 1: Logo de CEDIR (fondo blanco, solo imagen) -->
+                <div class="col-auto">
+                    <a href="{{ url_for('abm') }}" class="navbar-brand">
+                        <div class="logo-container">
                             <img src="https://cedirssf.com/wp-content/uploads/2025/09/PNGG-LOGO-blue-1-1.png" 
                                  alt="CEDIR Logo" 
-                                 class="logo-cedir"
-                                 onerror="this.src='https://placehold.co/200x60/002856/white?text=CEDIR'">
-                            <span class="brand-text">Centro de Investigación, Diagnóstico y Rehabilitación</span>
-                        </a>
+                                 class="logo-cedir-nav"
+                                 onerror="this.src='https://placehold.co/120x50/002856/white?text=CEDIR'">
+                        </div>
+                    </a>
+                </div>
+                
+                <!-- PARTE 2: Vacía (espacio) -->
+                <div class="col">
+                    <!-- Espacio vacío -->
+                </div>
+                
+                <!-- PARTE 3: Menú de navegación -->
+                <div class="col-auto">
+                    <div class="navbar-collapse" id="navbarMain">
+                        <ul class="navbar-nav me-auto mb-0">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.endpoint == 'abm' %}active{% endif %}" 
+                                   href="{{ url_for('abm') }}">
+                                    <i class="bi bi-images"></i> Gestión de Imágenes
+                                </a>
+                            </li>
+                            
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.endpoint == 'superset' %}active{% endif %}" 
+                                   href="{{ url_for('superset') }}">
+                                    <i class="bi bi-graph-up"></i> Dashboard
+                                </a>
+                            </li>
+                        </ul>
                     </div>
                 </div>
-                <div class="col-md-6 text-end">
-                    <div class="header-contact">
-                        <span class="contact-phone">
-                            <i class="bi bi-telephone-fill"></i> +54 341 123-4567
-                        </span>
-                        <span class="contact-email">
-                            <i class="bi bi-envelope-fill"></i> info@cedirssf.com
-                        </span>
-                    </div>
+                
+                <!-- PARTE 4: Theme toggle y menú de usuario -->
+                <div class="col-auto">
+                    <ul class="navbar-nav ms-auto mb-0 align-items-center">
+                        <li class="nav-item">
+                            <button id="theme-toggle" class="nav-link btn-theme-toggle" title="Cambiar a modo oscuro" aria-label="Cambiar tema">
+                                <i class="bi bi-sun-fill"></i>
+                            </button>
+                        </li>
+                        {% if user %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle user-dropdown" href="#" role="button" data-bs-toggle="dropdown">
+                                    {% if user.avatar_url %}
+                                        <img src="{{ user.avatar_url }}" alt="Avatar" class="user-avatar rounded-circle">
+                                    {% else %}
+                                        <i class="bi bi-person-circle user-icon"></i>
+                                    {% endif %}
+                                    <span class="user-name">{{ user.full_name or user.email.split('@')[0] }}</span>
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li>
+                                        <a class="dropdown-item" href="{{ url_for('profile') }}">
+                                            <i class="bi bi-person"></i> Mi Perfil
+                                        </a>
+                                    </li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                                            <i class="bi bi-box-arrow-right"></i> Cerrar Sesión
+                                        </a>
+                                    </li>
+                                </ul>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link btn-login" href="{{ url_for('login') }}">
+                                    <i class="bi bi-box-arrow-in-right"></i> Iniciar Sesión
+                                </a>
+                            </li>
+                        {% endif %}
+                    </ul>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Barra de navegación principal -->
-    <nav class="navbar navbar-expand-lg navbar-dark main-nav">
-        <div class="container">
+            
+            <!-- Botón hamburguesa para móvil -->
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            
-            <div class="collapse navbar-collapse" id="navbarMain">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'abm' %}active{% endif %}" 
-                           href="{{ url_for('abm') }}">
-                            <i class="bi bi-images"></i> Gestión de Imágenes
-                        </a>
-                    </li>
-                    
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'superset' %}active{% endif %}" 
-                           href="{{ url_for('superset') }}">
-                            <i class="bi bi-graph-up"></i> Dashboard
-                        </a>
-                    </li>
-                </ul>
-                
-                <!-- Menú de usuario alineado a la derecha -->
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <button id="theme-toggle" class="nav-link btn-theme-toggle" title="Cambiar a modo oscuro" aria-label="Cambiar tema">
-                            <i class="bi bi-sun-fill"></i>
-                        </button>
-                    </li>
-                    {% if user %}
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle user-dropdown" href="#" role="button" data-bs-toggle="dropdown">
-                                {% if user.avatar_url %}
-                                    <img src="{{ user.avatar_url }}" alt="Avatar" class="user-avatar rounded-circle">
-                                {% else %}
-                                    <i class="bi bi-person-circle user-icon"></i>
-                                {% endif %}
-                                <span class="user-name">{{ user.full_name or user.email.split('@')[0] }}</span>
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <a class="dropdown-item" href="{{ url_for('profile') }}">
-                                        <i class="bi bi-person"></i> Mi Perfil
-                                    </a>
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
-                                        <i class="bi bi-box-arrow-right"></i> Cerrar Sesión
-                                    </a>
-                                </li>
-                            </ul>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link btn-login" href="{{ url_for('login') }}">
-                                <i class="bi bi-box-arrow-in-right"></i> Iniciar Sesión
-                            </a>
-                        </li>
-                    {% endif %}
-                </ul>
-            </div>
         </div>
     </nav>
 

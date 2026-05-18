@@ -16,6 +16,9 @@ class Config:
     SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
+    # Configuración de esquemas (cedir para producción, auxiliar para desarrollo local)
+    DB_SCHEMA = os.environ.get('DB_SCHEMA', 'cedir')  # Valores: 'cedir' o 'auxiliar'
+    
     # Configuración de Supabase
     SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://tu-proyecto.supabase.co')
     SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'tu-supabase-anon-key')

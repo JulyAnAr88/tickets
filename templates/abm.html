@@ -300,10 +300,10 @@
                                         <a href="{{ url_for('editar', id=ticket.id) }}" class="btn btn-sm btn-warning">
                                             <i class="bi bi-pencil"></i> 
                                         </a>
-                                        <a href="{{ url_for('eliminar', id=ticket.id) }}" class="btn btn-sm btn-danger"
-                                            onclick="return confirm('¿Estás seguro de eliminar este ticket?')">
+                                        <button type="button" class="btn btn-sm btn-danger" 
+                                            onclick="eliminarTicket({{ ticket.id }}, true)">
                                             <i class="bi bi-trash"></i> 
-                                        </a>
+                                        </button>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -329,5 +329,6 @@
     <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
     <script src="{{ url_for('static', filename='js/tickets.js') }}"></script>
     <script src="{{ url_for('static', filename='js/pacientes.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/eliminar_ticket.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% endblock %}

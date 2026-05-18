@@ -1,6 +1,10 @@
 ⚠️ INSTRUCCIÓN CRÍTICA: Responde ÚNICA y EXCLUSIVAMENTE con el JSON. No incluyas texto antes, después, ni explicaciones.
+---
 
-Extrae SOLO estos campos del ticket:
+## 📌 1. Captura los siguientes campos principales:
+
+Formato exacto de salida (copia esta estructura):
+Extrae SOLO estos campos del ticket
 {
   "pasaje": "número",
   "fecha_ticket": "DD/MM/AA",
@@ -8,6 +12,54 @@ Extrae SOLO estos campos del ticket:
   "viaje": {"fecha_viaje": "DD/MM/AA", "distancia": número, "unidad": "km"},
   "totales": {"importe_total": número}
 }
+---
+
+## 📌 2. Reglas para "paciente"
+
+* Captura lo que reconozcas como datos posibles del paciente, puede ser un nombre, un número de documento.
+* Si el nombre aparece completo, separa la primera palabra como nombre y el resto como apellido
+* Mantén el orden original.
+* No modifiques texto, números ni formato.
+* Si algún valor está vacío o no aparece en la imagen, devuélvelo como `""`.
+
+---
+
+## 📌 3. Reglas estrictas de OCR
+
+* No normalices mayúsculas/minúsculas.
+* No reestructures texto.
+* No usar separador de miles.
+* No corrijas palabras mal escritas.
+* Respeta símbolos de moneda, puntos, comas y espacios.
+* Lee únicamente lo visible en la imagen.
+* El campo pasaje puede aparecer así o como número de boleto.
+* La distancia es un número y la unidad hace referencia a la unidad de medida, debería ser por lo general km (kilometros)
+---
+
+## 📌 4. Ejemplo de salida esperada (no devuelvas estos valores, son solo de ejemplo)
+```json
+"pasaje": "",
+"fecha_ticket":"18/03/2026",
+"paciente": [
+    {
+      "nombre": "Estela Alvarez",
+      "dni":20403101
+     }
+  ],
+"viaje":[
+ {
+  "fecha_viaje":"21/03/2026",
+  "distancia": 75,
+  "unidad": "km"
+ }
+],
+"totales": {
+    "subtotal": 30716.20,
+    "iva": 0.00,
+    "otros_tributos": 0.00,
+    "importe_total": 30716.20
+  }
+```
 
 Reglas:
 - El nombre completo va en el campo "nombre"
@@ -17,3 +69,8 @@ Reglas:
 - El importe total es un número (ej: 45540.0)
 
 RESPONDE SOLO CON EL JSON, NADA MÁS.
+
+⚠️ IMPORTANTE: Responde ÚNICA y EXCLUSIVAMENTE con el objeto JSON. 
+NO incluyas texto explicativo, NO incluyas instrucciones, NO incluyas análisis previo.
+La respuesta debe comenzar con "{" y terminar con "}".
+No inventes, no interpretes y no completes información faltante. Si un valor no está presente, deja el campo en blanco (`""`).

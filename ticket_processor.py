@@ -1,6 +1,8 @@
 import os
 import re
 import json
+import logging
+import numpy as np
 from unittest import result
 import sqlalchemy as sa
 from sqlalchemy import text
@@ -8,6 +10,21 @@ from datetime import datetime
 from pathlib import Path
 import google.generativeai as genai
 from PIL import Image
+
+# Importaciones para OCR local
+try:
+    import pytesseract
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
+    logging.warning("Tesseract no disponible")
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    logging.warning("OpenCV no disponible")
 import pdf2image
 from typing import Dict, Any, Optional, List
 import logging
@@ -83,26 +100,74 @@ class TicketProcessor:
             return self._get_error_ticket(page_num, "Formato de imagen no válido")
 
         try:
-            response = self.model.generate_content(
-                [prompt, img],
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "temperature": 0.1,
-                    "max_output_tokens": 2048
-                }
-            )
+            # =====================================================
+            # 🔄 MÉTODO HÍBRIDO: IA + OCR Local
+            # =====================================================
+            
+            # Intentar primero con IA (Gemini)
+            logger.info(f"🤖 Intentando extracción con IA (Gemini)...")
+            data = None
+            ia_exitosa = False
+            
+            try:
+                response = self.model.generate_content(
+                    [prompt, img],
+                    generation_config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0.0,  # Reducir temperatura para mayor precisión
+                        "max_output_tokens": 2048
+                    }
+                )
 
-            raw_response = response.text
-            logger.info(f"=== RESPUESTA CRUDA (página {page_num}) ===")
-            logger.info(f"Respuesta: {raw_response[:500]}")
+                raw_response = response.text
+                logger.info(f"=== RESPUESTA CRUDA IA (página {page_num}) ===")
+                logger.info(f"Respuesta: {raw_response[:500]}")
 
-            cleaned_text = self._clean_json_response(raw_response)
-            logger.info(f"Texto limpiado: {cleaned_text}")  # ← Ver qué queda después de limpiar
-            data = json.loads(cleaned_text)
-            logger.info(f"Datos parseados: {data}")  # ← Ver qué estructura tiene
-            data = self._normalize_ticket_data(data)
+                cleaned_text = self._clean_json_response(raw_response)
+                data = json.loads(cleaned_text)
+                data = self._normalize_ticket_data(data)
+                ia_exitosa = True
+                logger.info("✅ Extracción con IA exitosa")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Error con IA: {e}, intentando con OCR local...")
+                ia_exitosa = False
+            
+            # Verificar si la IA detectó datos suficientes
+            tiene_importe = False
+            tiene_paciente = False
+            esPlaceholder = self._es_dato_placeholder(data)
+            
+            if data and not esPlaceholder:
+                # Verificar importe
+                importe = data.get('totales', {}).get('importe_total') or data.get('importe_total')
+                if importe and float(importe) > 0:
+                    tiene_importe = True
+                    logger.info(f"✅ IA detectó importe: ${importe}")
+                
+                # Verificar datos de paciente
+                nombre = data.get('paciente', {}).get('nombre', '')
+                dni = data.get('paciente', {}).get('dni', '')
+                if nombre or dni:
+                    tiene_paciente = True
+                    logger.info(f"✅ IA detectó paciente: {nombre} / DNI: {dni}")
+            else:
+                logger.warning("⚠️ IA devolvió valores genéricos/placeholders, usando OCR local")
+            
+            # Si la IA no detectó importe NI datos del paciente, usar OCR local
+            if not tiene_importe and not tiene_paciente:
+                logger.info("🔄 IA no detectó importe ni paciente. Usando OCR local (Tesseract)...")
+                data = self._extract_with_ocr_local(image_input, page_num)
+            elif data and validate:
+                # Si tenemos datos pero validamos, procesamos
+                data = self.protocolo_manager.validate_and_correct_ticket_data(data)
+            
+            # Si no hay datos, usar OCR local como respaldo
+            if not data or (not data.get('totales', {}).get('importe_total') and not data.get('paciente', {}).get('nombre')):
+                logger.info("🔄 Usando OCR local como respaldo...")
+                data = self._extract_with_ocr_local(image_input, page_num)
 
-            if validate:
+            if validate and data and not data.get('_error'):
                 data = self.protocolo_manager.validate_and_correct_ticket_data(data)
                 
                 # =====================================================
@@ -155,15 +220,234 @@ class TicketProcessor:
                 else:
                     data['_requiere_seleccion'] = False
                     data['_insertar'] = True
-
+            
             return data
-
+             
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error en página {page_num}: {error_msg}")
 
             # 🔥 RETORNAR UN TICKET CON ERROR, NO LANZAR EXCEPCIÓN
             return self._get_error_ticket(page_num, error_msg)
+    
+    def _es_dato_placeholder(self, data: Dict[str, Any]) -> bool:
+        """
+        Verifica si los datos devueltos por la IA son placeholders/genéricos
+        Ejemplo: "nombre apellido", "número", etc.
+        """
+        if not data:
+            return True
+        
+        # Lista de valores que indican placeholder
+        placeholders_nombre = [
+            'nombre apellido', 'nombre y apellido', 'nombre completo',
+            'nombre y appelido', 'nombre del pasajero', 'cliente',
+            'pasajero', 'beneficiario', 'titular'
+        ]
+        
+        placeholders_dni = [
+            'número', 'numero', 'dni', 'documento', 'nro', 'num',
+            '12345678', '00000000', '11111111'
+        ]
+        
+        placeholders_importe = ['0', 0, '0.00', 0.0, None, '']
+        
+        # Verificar nombre
+        nombre = data.get('paciente', {}).get('nombre', '')
+        if nombre:
+            nombre_lower = nombre.lower().strip()
+            if nombre_lower in placeholders_nombre or len(nombre_lower) < 3:
+                logger.warning(f"⚠️ Nombre parece ser placeholder: '{nombre}'")
+                return True
+        
+        # Verificar DNI
+        dni = data.get('paciente', {}).get('dni', '')
+        if dni:
+            dni_lower = str(dni).lower().strip()
+            if dni_lower in placeholders_dni or dni_lower.isdigit() and int(dni_lower) < 1000000:
+                logger.warning(f"⚠️ DNI parece ser placeholder: '{dni}'")
+                return True
+        
+        # Verificar importe
+        importe = data.get('totales', {}).get('importe_total') or data.get('importe_total')
+        if not importe or importe in placeholders_importe:
+            logger.warning(f"⚠️ Importe parece ser placeholder: '{importe}'")
+            return False  # El importe puede ser 0, no significa que sea placeholder
+        
+        return False
+    
+    def _extract_with_ocr_local(self, image_input, page_num: int = 1) -> Dict[str, Any]:
+        """
+        Extrae datos usando OCR local (Tesseract + OpenCV)
+        Se usa como respaldo cuando la IA no detecta importe ni paciente
+        """
+        logger.info(f"🔍 Usando OCR local para página {page_num}...")
+        
+        try:
+            # Cargar imagen
+            if isinstance(image_input, str):
+                if image_input.lower().endswith('.pdf'):
+                    from pdf2image import convert_from_path
+                    images = convert_from_path(image_input, first_page=page_num, last_page=page_num)
+                    img = images[0] if images else None
+                else:
+                    img = Image.open(image_input)
+            elif isinstance(image_input, Image.Image):
+                img = image_input
+            else:
+                return self._get_error_ticket(page_num, "Formato no válido para OCR")
+            
+            if not img:
+                return self._get_error_ticket(page_num, "No se pudo cargar imagen")
+            
+            # Preprocesar imagen
+            img_processed = self._preprocess_for_ocr(img)
+            
+            # Extraer texto
+            if TESSERACT_AVAILABLE:
+                custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:$/-() '
+                text = pytesseract.image_to_string(img_processed, lang='spa+eng', config=custom_config)
+            else:
+                return self._get_error_ticket(page_num, "Tesseract no disponible")
+            
+            logger.info(f"📝 Texto OCR (primeros 500 chars): {text[:500]}")
+            
+            # Parsear datos del texto
+            data = self._parse_ocr_text(text)
+            
+            # Normalizar datos
+            data = self._normalize_ticket_data(data)
+            
+            logger.info(f"✅ Datos extraídos con OCR local: {data.get('totales', {}).get('importe_total')} | {data.get('paciente', {}).get('nombre')}")
+            
+            return data
+            
+        except Exception as e:
+            logger.error(f"Error en OCR local: {e}")
+            return self._get_error_ticket(page_num, f"Error OCR local: {str(e)}")
+    
+    def _preprocess_for_ocr(self, img: Image.Image) -> Image.Image:
+        """
+        Preprocesa la imagen para mejorar el reconocimiento de OCR
+        """
+        logger.info("🔧 Preprocesando imagen para OCR...")
+        
+        # Convertir a numpy array
+        img_array = np.array(img)
+        
+        # Convertir a escala de grises
+        if len(img_array.shape) == 3:
+            if img_array.shape[2] == 4:
+                img_array = cv2.cvtColor(img_array, cv2.COLOR_RGBA2GRAY)
+            else:
+                img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        
+        # Reducir ruido
+        img_array = cv2.GaussianBlur(img_array, (5, 5), 0)
+        
+        # Umbral adaptativo
+        thresh = cv2.adaptiveThreshold(
+            img_array, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+            cv2.THRESH_BINARY, 11, 2
+        )
+        
+        # Mejorar texto
+        kernel = np.ones((1, 1), np.uint8)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        
+        return Image.fromarray(thresh)
+    
+    def _parse_ocr_text(self, text: str) -> Dict[str, Any]:
+        """
+        Parsea el texto extraído por OCR para identificar campos del ticket
+        """
+        logger.info("📊 Parseando texto OCR...")
+        
+        result = {
+            'paciente': {},
+            'viaje': {},
+            'totales': {},
+            'pasaje': '',
+            'fecha_ticket': '',
+            'nro_doc': ''
+        }
+        
+        text_upper = text.upper()
+        text_lines = [line.strip() for line in text.split('\n') if line.strip()]
+        
+        # Buscar importe (múltiples patrones)
+        importe_patterns = [
+            r'TOTAL[:\s]*\$?\s*(\d+[\.,]?\d*)',
+            r'IMPORTE[:\s]*\$?\s*(\d+[\.,]?\d*)',
+            r'MONTO[:\s]*\$?\s*(\d+[\.,]\d{2})',
+            r'\$\s*(\d+[\.,]\d{2})',
+            r'(\d{3,6}[\.,]\d{2})',
+        ]
+        
+        for pattern in importe_patterns:
+            match = re.search(pattern, text_upper)
+            if match:
+                try:
+                    importe = match.group(1).replace('.', '').replace(',', '.')
+                    result['totales']['importe_total'] = float(importe)
+                    logger.info(f"💰 OCR detectó importe: ${importe}")
+                    break
+                except:
+                    pass
+        
+        # Buscar nombre
+        for line in text_lines:
+            skip = ['NOMBRE', 'CLIENTE', 'PASAJERO', 'TOTAL', 'IMPORTE', 'FECHA', 'TICKET', 'BOLETO', 'PEAJE', 'DNI', 'DOC']
+            if any(w in line.upper() for w in skip):
+                continue
+            match = re.search(r'^([A-ZÁÉÍÓÚÑ]{2,})\s+([A-ZÁÉÍÓÚÑ]{2,})', line)
+            if match and 5 < len(line) < 40:
+                result['paciente']['nombre'] = f"{match.group(1)} {match.group(2)}"
+                break
+        
+        # Buscar DNI
+        dni_patterns = [r'DNI[:\s]*(\d{6,9})', r'(\d{7,8})', r'(\d{2}\.\d{3}\.\d{3})']
+        for pattern in dni_patterns:
+            match = re.search(pattern, text_upper)
+            if match:
+                result['paciente']['dni'] = match.group(1)
+                result['nro_doc'] = match.group(1)
+                break
+        
+        # Buscar fecha
+        fecha_patterns = [r'(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})']
+        for pattern in fecha_patterns:
+            match = re.search(pattern, text_upper)
+            if match:
+                result['viaje']['fecha_viaje'] = match.group(1)
+                result['fecha_ticket'] = match.group(1)
+                break
+        
+        # Buscar distancia
+        dist_patterns = [r'(\d+[\.,]?\d*)\s*KM', r'DISTANCIA[:\s]*(\d+[\.,]?\d*)']
+        for pattern in dist_patterns:
+            match = re.search(pattern, text_upper)
+            if match:
+                try:
+                    result['viaje']['distancia'] = float(match.group(1).replace(',', '.'))
+                    result['viaje']['unidad'] = 'km'
+                except:
+                    pass
+                break
+        
+        # Buscar pasaje/ticket
+        pasaje_patterns = [r'PASAJE[:\s]*([A-Z0-9\-]+)', r'TICKET[:\s]*([A-Z0-9\-]+)']
+        for pattern in pasaje_patterns:
+            match = re.search(pattern, text_upper)
+            if match:
+                result['pasaje'] = match.group(1)
+                break
+        
+        # Por defecto marcar como no encontrado
+        result['paciente']['encontrado'] = False
+        result['paciente']['requiere_seleccion'] = True
+        
+        return result
 
     def _get_error_ticket(self, page_num: int, error_msg: str) -> Dict[str, Any]:
         """Retorna un ticket que representa un error de procesamiento"""

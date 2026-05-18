@@ -121,12 +121,31 @@ body {
     margin-right: 0.5rem;
 }
 
-/* ========== BARRA DE NAVEGACIÓN PRINCIPAL ========== */
+/* ========== BARRA DE NAVEGACIÓN PRINCIPAL (estilo cedirssf.com) ========== */
 .main-nav {
-    background-color: var(--azul-cedir);
-    padding: 0.75rem 0;
+    background-color: var(--azul-cedir) !important;
+    padding: 0.5rem 0;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     transition: background-color 0.3s ease;
+}
+
+/* Contenedor del logo */
+.logo-container {
+    background-color: #FFFFFF;
+    padding: 8px 15px;
+    border-radius: 8px;
+    display: inline-block;
+}
+
+.logo-cedir-nav {
+    height: 45px;
+    width: auto;
+    display: block;
+}
+
+/* Estilos del navbar */
+.main-nav .navbar-brand {
+    padding: 0;
 }
 
 .main-nav .nav-link {
@@ -135,6 +154,7 @@ body {
     padding: 0.5rem 1rem;
     transition: all 0.3s ease;
     border-radius: 0.5rem;
+    font-size: 0.95rem;
 }
 
 .main-nav .nav-link:hover,
@@ -144,6 +164,22 @@ body {
 
 .main-nav .nav-link.active {
     background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Ajuste para que el navbar sea más compacto */
+.main-nav .container-fluid {
+    max-width: 1400px;
+}
+
+.main-nav .row {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.main-nav .col, 
+.main-nav .col-auto {
+    padding-left: 10px;
+    padding-right: 10px;
 }
 
 /* Botón de login en la nav */
@@ -358,6 +394,35 @@ html.dark-mode .table-striped tbody tr:nth-of-type(odd) {
     background-color: rgba(255, 255, 255, 0.05);
 }
 
+/* Dark mode: tabla con texto blanco para mejor contraste */
+html.dark-mode .table,
+html.dark-mode .table td,
+html.dark-mode .table th,
+html.dark-mode .table thead th {
+    color: #FFFFFF !important;
+    background-color: var(--bg-card);
+}
+
+html.dark-mode .table tbody tr {
+    background-color: var(--bg-card);
+}
+
+html.dark-mode .table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark-mode .table thead th {
+    background-color: var(--azul-cedir) !important;
+}
+
+html.dark-mode .table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+html.dark-mode .table .badge {
+    color: #000000;
+}
+
 /* --------------------------------------------------------------------------
    Alertas y mensajes
    -------------------------------------------------------------------------- */
@@ -445,8 +510,8 @@ html.dark-mode .alert-danger {
 
 /* ========== FOOTER ========== */
 .footer {
-    background-color: var(--azul-cedir) !important;
-    color: var(--blanco) !important;
+    background-color: var(--azul-cedir);
+    color: var(--blanco);
     padding: 3rem 0 1rem;
     margin-top: 3rem;
 }
@@ -461,14 +526,14 @@ html.dark-mode .alert-danger {
     font-size: 0.85rem;
     opacity: 0.8;
     line-height: 1.5;
-    color: var(--blanco) !important;
+    color: var(--blanco);
 }
 
 .footer h5 {
     font-size: 1rem;
     font-weight: 600;
     margin-bottom: 1rem;
-    color: var(--verde-cedir) !important;
+    color: var(--verde-cedir);
 }
 
 .footer-contact, .footer-links {
