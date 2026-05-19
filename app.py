@@ -1,7 +1,7 @@
 import os
 import jwt
 from datetime import datetime, time, timedelta
-from flask import Flask, json, render_template, request, redirect, url_for, flash, jsonify, session, make_response
+from flask import Flask, json, render_template, request, redirect, url_for, flash, jsonify, session, make_response, current_app
 from werkzeug.utils import secure_filename
 from config import Config
 from models import db, Ticket
@@ -158,6 +158,29 @@ def profile():
         return redirect(url_for('profile'))
     
     return render_template('profile.html', user=user)
+
+@app.route('/profile/cambiar_password', methods=['POST'])
+@supabase_helper.login_required
+def cambiar_password():
+    """Cambiar contraseña del usuario"""
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
+    
+    if not current_password or not new_password or not confirm_password:
+        flash('Todos los campos son obligatorios', 'warning')
+    elif len(new_password) < 6:
+        flash('La nueva contraseña debe tener al menos 6 caracteres', 'warning')
+    elif new_password != confirm_password:
+        flash('Las contraseñas nuevas no coinciden', 'danger')
+    else:
+        result = supabase_helper.change_password(current_password, new_password)
+        if result['success']:
+            flash(result['message'], 'success')
+        else:
+            flash(result['message'], 'danger')
+    
+    return redirect(url_for('profile'))
 
 # ============ RUTAS PROTEGIDAS ============
 
@@ -731,7 +754,7 @@ def eliminar_con_reintegros(id):
         reintegros_count = 0
         try:
             reintegros_count = db.session.execute(
-                text(f"SELECT COUNT(*) FROM {esquema_actual}.ticket_procesado WHERE ticket_id = :ticket_id"),
+                text(f"SELECT COUNT(*) FROM {esquema_actual}.ticket_procesado WHERE id_ticket = :ticket_id"),
                 {'ticket_id': ticket.id}
             ).scalar() or 0
             logger.info(f"📊 Reinentos asociados encontrados: {reintegros_count}")
@@ -742,7 +765,7 @@ def eliminar_con_reintegros(id):
         if reintegros_count > 0:
             try:
                 result = db.session.execute(
-                    text(f"DELETE FROM {esquema_actual}.ticket_procesado WHERE ticket_id = :ticket_id"),
+                    text(f"DELETE FROM {esquema_actual}.ticket_procesado WHERE id_ticket = :ticket_id"),
                     {'ticket_id': ticket.id}
                 )
                 logger.info(f"✅ Eliminados {result.rowcount} reintegros manualmente")
@@ -998,6 +1021,45 @@ def auth_logout():
         logger.error(f"Error al cerrar sesión: {e}")
     
     return redirect(url_for('login'))
+
+@app.route('/admin/crear_usuario', methods=['GET', 'POST'])
+@supabase_helper.login_required
+def admin_crear_usuario():
+    """Crear usuarios operativos - solo para superusuario"""
+    from flask import request
+    from config import Config
+    
+    current_user = supabase_helper.get_current_user()
+    admin_email = app.config.get('ADMIN_EMAIL', 'admin@cedir.com')
+    
+    if current_user.get('email') != admin_email:
+        flash('No tienes permisos de administrador', 'danger')
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        full_name = request.form.get('full_name', '').strip()
+        
+        if not email or not password or not full_name:
+            flash('Todos los campos son obligatorios', 'warning')
+        elif len(password) < 6:
+            flash('La contraseña debe tener al menos 6 caracteres', 'warning')
+        else:
+            result = supabase_helper.sign_up_user(
+                email=email,
+                password=password,
+                metadata={'full_name': full_name}
+            )
+            
+            if result.get('success'):
+                flash(f'Usuario {full_name} ({email}) creado exitosamente', 'success')
+            else:
+                flash(f'Error al crear usuario: {result.get("message")}', 'danger')
+        
+        return redirect(url_for('admin_crear_usuario'))
+    
+    return render_template('admin_crear_usuario.html')
 
 if __name__ == '__main__':
     with app.app_context():

@@ -178,6 +178,37 @@ def update_user_metadata(metadata):
     except Exception as e:
         return {'success': False, 'message': str(e)}
 
+def change_password(current_password, new_password):
+    """Cambiar contraseña del usuario autenticado"""
+    if supabase is None:
+        return {'success': False, 'message': 'Supabase no está conectado'}
+    
+    try:
+        user = session.get('user')
+        if not user:
+            return {'success': False, 'message': 'Usuario no autenticado'}
+        
+        # Primero verificar la contraseña actual intentando iniciar sesión
+        verify = supabase.auth.sign_in_with_password({
+            "email": user['email'],
+            "password": current_password
+        })
+        
+        if not verify.user:
+            return {'success': False, 'message': 'La contraseña actual no es correcta'}
+        
+        # Actualizar a la nueva contraseña
+        response = supabase.auth.update_user({
+            "password": new_password
+        })
+        
+        if response.user:
+            return {'success': True, 'message': 'Contraseña actualizada exitosamente'}
+        return {'success': False, 'message': 'Error al actualizar la contraseña'}
+    except Exception as e:
+        return {'success': False, 'message': str(e)}
+
+
 def upload_avatar(file, user_id):
     """Subir avatar a Supabase Storage"""
     if supabase is None:

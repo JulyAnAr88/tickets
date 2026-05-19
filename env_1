@@ -1,0 +1,24 @@
+# Configuración de Base de Datos
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=gestion_tickets
+DB_USER=postgres
+DB_PASSWORD=tu_contraseña
+DB_SCHEMA=cedir
+
+# Clave secreta Flask
+SECRET_KEY=tu-clave-secreta-aqui
+
+# Supabase
+SUPABASE_URL=https://tu-proyecto.supabase.co
+SUPABASE_KEY=tu-supabase-anon-key
+SUPABASE_JWT_SECRET=tu-jwt-secret
+
+# Gemini API (para extracción con IA)
+GEMINI_API_KEY=tu-api-key-de-gemini
+
+# Google Cloud Vision API (OCR avanzado - mucho mejor que Tesseract)
+GOOGLE_CLOUD_VISION_API_KEY=tu-api-key-de-google-cloud-vision
+
+# Prompts folder
+PROMPTS_FOLDER=prompts

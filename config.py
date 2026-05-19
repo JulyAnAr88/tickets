@@ -28,6 +28,9 @@ class Config:
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
     DATABASE_URL=f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
+    # Google Cloud Vision API (mucho mejor OCR que Tesseract)
+    GOOGLE_CLOUD_VISION_API_KEY = os.environ.get('GOOGLE_CLOUD_VISION_API_KEY', '')
+    
     # Prompts Configuration
     PROMPTS_FOLDER = os.environ.get('PROMPTS_FOLDER', 'prompts')
 
@@ -38,3 +41,9 @@ class Config:
     PROCESSED_FOLDER = os.environ.get('PROCESSED_FOLDER', '/')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp','pdf'}
+    
+    # Superusuario (email con acceso a funciones de admin)
+    ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', '')
+    
+    # Service key para operaciones de admin en Supabase (listar/eliminar usuarios)
+    SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '')

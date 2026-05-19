@@ -3,7 +3,7 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
-        <div class="card">
+        <div class="card mb-4">
             <div class="card-header mi-perfil text-white">
                 <h4 class="mb-0">Mi Perfil</h4>
             </div>
@@ -37,6 +37,31 @@
                     
                     <button type="submit" class="btn btn-primary w-100">
                         <i class="bi bi-save"></i> Actualizar Perfil
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-key"></i> Cambiar Contraseña</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('cambiar_password') }}">
+                    <div class="mb-3">
+                        <label for="current_password" class="form-label">Contraseña Actual</label>
+                        <input type="password" class="form-control" id="current_password" name="current_password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">Nueva Contraseña</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" required minlength="6">
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Confirmar Nueva Contraseña</label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required minlength="6">
+                    </div>
+                    <button type="submit" class="btn btn-warning w-100">
+                        <i class="bi bi-key"></i> Cambiar Contraseña
                     </button>
                 </form>
             </div>
