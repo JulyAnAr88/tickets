@@ -17,6 +17,10 @@ import json
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# Configurar sesión permanente (30 días)
+app.config['SESSION_PERMANENT'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -725,13 +729,21 @@ def editar(id):
 @app.route('/eliminar/<int:id>')
 @supabase_helper.login_required
 def eliminar(id):
-    """Eliminar ticket (simple, sin reintegros)"""
+    """Eliminar ticket con sus reintegros asociados"""
     ticket = Ticket.query.get_or_404(id)
     
     try:
+        esquema_actual = current_app.config.get('DB_SCHEMA', 'cedir')
+        
+        # Eliminar reintegros asociados manualmente
+        db.session.execute(
+            text(f"DELETE FROM {esquema_actual}.ticket_procesado WHERE id_ticket = :ticket_id"),
+            {'ticket_id': ticket.id}
+        )
+        
         db.session.delete(ticket)
         db.session.commit()
-        flash('Ticket eliminado exitosamente', 'success')
+        flash('Ticket y reintegros asociados eliminados exitosamente', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Error al eliminar: {str(e)}', 'danger')

@@ -510,10 +510,14 @@ html.dark-mode .alert-danger {
 
 /* ========== FOOTER ========== */
 .footer {
-    background-color: var(--azul-cedir);
+    background-color: var(--azul-cedir) !important;
     color: var(--blanco);
     padding: 3rem 0 1rem;
     margin-top: 3rem;
+}
+
+html.dark-mode .footer {
+    background-color: var(--azul-cedir) !important;
 }
 
 .footer-logo {

@@ -91,6 +91,7 @@ def sign_in_user(email, password):
             )
             
             # Guardar toda la información del usuario en sesión
+            session.permanent = True
             session['user'] = {
                 'id': response.user.id,
                 'email': response.user.email,

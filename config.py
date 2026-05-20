@@ -47,3 +47,6 @@ class Config:
     
     # Service key para operaciones de admin en Supabase (listar/eliminar usuarios)
     SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '')
+    
+    # n8n webhook para OCR
+    N8N_OCR_WEBHOOK_URL = os.environ.get('N8N_OCR_WEBHOOK_URL', '')

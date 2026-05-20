@@ -13,15 +13,6 @@ from pathlib import Path
 import google.generativeai as genai
 from PIL import Image
 
-# Importaciones para Google Cloud Vision
-try:
-    from google.cloud import vision
-    from google.cloud.vision_v1 import types
-    GOOGLE_VISION_AVAILABLE = True
-except ImportError:
-    GOOGLE_VISION_AVAILABLE = False
-    logging.warning("Google Cloud Vision no disponible")
-
 # Importaciones para OCR local
 try:
     import pytesseract
@@ -112,85 +103,67 @@ class TicketProcessor:
 
         try:
             # =====================================================
-            # 🔄 MÉTODO HÍBRIDO: IA + OCR Local
+            # 🔄 MÉTODO HÍBRIDO: n8n → Gemini → Tesseract
             # =====================================================
             
-            # Intentar primero con IA (Gemini)
-            logger.info(f"🤖 Intentando extracción con IA (Gemini)...")
-            data = None
-            ia_exitosa = False
+            # 1°: n8n webhook (primero)
+            logger.info(f"🔍 Intentando con n8n webhook (página {page_num})...")
+            data = self._extract_with_n8n(image_input, page_num)
             
-            try:
-                response = self.model.generate_content(
-                    [prompt, img],
-                    generation_config={
-                        "response_mime_type": "application/json",
-                        "temperature": 0.0,  # Reducir temperatura para mayor precisión
-                        "max_output_tokens": 2048
-                    }
-                )
-
-                raw_response = response.text
-                logger.info(f"=== RESPUESTA CRUDA IA (página {page_num}) ===")
-                logger.info(f"Respuesta: {raw_response[:500]}")
-
-                cleaned_text = self._clean_json_response(raw_response)
-                data = json.loads(cleaned_text)
-                data = self._normalize_ticket_data(data)
-                ia_exitosa = True
-                logger.info("✅ Extracción con IA exitosa")
-                
-            except Exception as e:
-                logger.warning(f"⚠️ Error con IA: {e}, intentando con OCR local...")
-                ia_exitosa = False
-            
-            # Verificar si la IA detectó datos suficientes
             tiene_importe = False
             tiene_paciente = False
-            esPlaceholder = self._es_dato_placeholder(data)
             
-            if data and not esPlaceholder:
-                # Verificar importe
-                importe = data.get('totales', {}).get('importe_total') or data.get('importe_total')
-                if importe and float(importe) > 0:
-                    tiene_importe = True
-                    logger.info(f"✅ IA detectó importe: ${importe}")
-                
-                # Verificar datos de paciente
+            if data and not data.get('_error'):
+                importe = data.get('totales', {}).get('importe_total')
                 nombre = data.get('paciente', {}).get('nombre', '')
                 dni = data.get('paciente', {}).get('dni', '')
+                
+                if importe and float(importe) > 0:
+                    tiene_importe = True
+                    logger.info(f"✅ n8n detectó importe: ${importe}")
                 if nombre or dni:
                     tiene_paciente = True
-                    logger.info(f"✅ IA detectó paciente: {nombre} / DNI: {dni}")
-            else:
-                logger.warning("⚠️ IA devolvió valores genéricos/placeholders, usando OCR local")
+                    logger.info(f"✅ n8n detectó paciente: {nombre} / DNI: {dni}")
             
-            # Si la IA no detectó importe NI datos del paciente, intentar con Google Vision
+            # 2°: Si no detectó datos, intentar con Gemini
             if not tiene_importe and not tiene_paciente:
-                logger.info("🔄 IA no detectó importe ni paciente. Intentando con Google Cloud Vision...")
-                data = self._extract_with_google_vision(image_input, page_num)
-                
-                # Verificar si Google Vision detectó datos
-                tiene_importe_gv = False
-                tiene_paciente_gv = False
-                
-                if data and not data.get('_error'):
-                    importe_gv = data.get('totales', {}).get('importe_total')
-                    nombre_gv = data.get('paciente', {}).get('nombre', '')
-                    dni_gv = data.get('paciente', {}).get('dni', '')
+                logger.info("🤖 n8n no detectó datos. Intentando con Gemini...")
+                try:
+                    response = self.model.generate_content(
+                        [prompt, img],
+                        generation_config={
+                            "response_mime_type": "application/json",
+                            "temperature": 0.0,
+                            "max_output_tokens": 2048
+                        }
+                    )
+                    raw_response = response.text
+                    logger.info(f"=== RESPUESTA CRUDA IA (página {page_num}) ===")
+                    logger.info(f"Respuesta: {raw_response[:500]}")
+
+                    cleaned_text = self._clean_json_response(raw_response)
+                    data = json.loads(cleaned_text)
+                    data = self._normalize_ticket_data(data)
                     
-                    if importe_gv and float(importe_gv) > 0:
-                        tiene_importe_gv = True
-                        logger.info(f"✅ Google Vision detectó importe: ${importe_gv}")
-                    
-                    if nombre_gv or dni_gv:
-                        tiene_paciente_gv = True
-                        logger.info(f"✅ Google Vision detectó paciente: {nombre_gv} / DNI: {dni_gv}")
-                
-                # Si Google Vision tampoco detectó, usar Tesseract
-                if not tiene_importe_gv and not tiene_paciente_gv:
-                    logger.info("🔄 Google Vision no detectó datos suficientes. Usando Tesseract...")
-                    data = self._extract_with_ocr_local(image_input, page_num)
+                    if data and not self._es_dato_placeholder(data):
+                        importe = data.get('totales', {}).get('importe_total') or data.get('importe_total')
+                        nombre = data.get('paciente', {}).get('nombre', '')
+                        dni = data.get('paciente', {}).get('dni', '')
+                        
+                        if importe and float(importe) > 0:
+                            tiene_importe = True
+                            logger.info(f"✅ Gemini detectó importe: ${importe}")
+                        if nombre or dni:
+                            tiene_paciente = True
+                            logger.info(f"✅ Gemini detectó paciente: {nombre} / DNI: {dni}")
+                        logger.info("✅ Extracción con Gemini exitosa")
+                except Exception as e:
+                    logger.warning(f"⚠️ Error con Gemini: {e}")
+            
+            # 3°: Si sigue sin detectar, usar Tesseract
+            if not tiene_importe and not tiene_paciente:
+                logger.info("🔄 Ni n8n ni Gemini detectaron datos. Usando Tesseract...")
+                data = self._extract_with_ocr_local(image_input, page_num)
             elif data and validate:
                 # Si tenemos datos pero validamos, procesamos
                 data = self.protocolo_manager.validate_and_correct_ticket_data(data)
@@ -309,24 +282,18 @@ class TicketProcessor:
         
         return False
     
-    def _extract_with_google_vision(self, image_input, page_num: int = 1) -> Dict[str, Any]:
+    def _extract_with_n8n(self, image_input, page_num: int = 1) -> Dict[str, Any]:
         """
-        Extrae datos usando Google Cloud Vision API
-        Mucho mejor que Tesseract para reconocimiento de texto
+        Extrae datos enviando la imagen a un webhook de n8n
         """
-        logger.info(f"🔍 Usando Google Cloud Vision API para página {page_num}...")
+        logger.info(f"🔍 Enviando a n8n OCR para página {page_num}...")
         
-        if not GOOGLE_VISION_AVAILABLE:
-            logger.warning("Google Cloud Vision no está instalado, usando método alternativo")
-            return self._get_error_ticket(page_num, "Google Cloud Vision no disponible")
+        webhook_url = os.environ.get('N8N_OCR_WEBHOOK_URL', '')
+        if not webhook_url:
+            logger.warning("N8N_OCR_WEBHOOK_URL no configurada")
+            return self._get_error_ticket(page_num, "n8n webhook no configurado")
         
         try:
-            # Obtener API key
-            api_key = os.environ.get('GOOGLE_CLOUD_VISION_API_KEY', '')
-            if not api_key:
-                logger.warning("No hay API key de Google Cloud Vision configurada")
-                return self._get_error_ticket(page_num, "API key de Google Cloud no configurada")
-            
             # Cargar imagen
             if isinstance(image_input, str):
                 if image_input.lower().endswith('.pdf'):
@@ -343,70 +310,84 @@ class TicketProcessor:
             if not img:
                 return self._get_error_ticket(page_num, "No se pudo cargar imagen")
             
-            # Convertir imagen a base64
+            # Convertir imagen a bytes
             import io
             buffer = io.BytesIO()
-            img.save(buffer, format='JPEG')
-            image_content = base64.b64encode(buffer.getvalue()).decode('UTF-8')
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            img.save(buffer, format='JPEG', quality=95)
+            buffer.seek(0)
             
-            # Llamar a Google Vision API
-            endpoint = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+            # Enviar a n8n webhook como multipart (archivo binario)
+            files = {'image': ('ticket.jpg', buffer, 'image/jpeg')}
+            data = {'page': str(page_num), 'format': 'binary'}
             
-            request_payload = {
-                "requests": [
-                    {
-                        "image": {"content": image_content},
-                        "features": [
-                            {"type": "TEXT_DETECTION"},
-                            {"type": "DOCUMENT_TEXT_DETECTION"}
-                        ],
-                        "imageContext": {
-                            "languageHints": ["es"]
-                        }
-                    }
-                ]
-            }
-            
-            response = requests.post(endpoint, json=request_payload, timeout=30)
+            logger.info(f"📤 Enviando imagen a n8n webhook: {webhook_url}")
+            response = requests.post(webhook_url, files=files, data=data, timeout=180)
             
             if response.status_code != 200:
-                logger.error(f"Error en Google Vision API: {response.status_code} - {response.text}")
-                return self._get_error_ticket(page_num, f"Error en API: {response.status_code}")
+                logger.error(f"Error en n8n webhook: {response.status_code} - {response.text[:200]}")
+                return self._get_error_ticket(page_num, f"Error n8n: {response.status_code}")
             
             result = response.json()
+            logger.info(f"📥 Respuesta CRUDA de n8n: {json.dumps(result, default=str)[:600]}")
+            logger.info(f"🔍 DEBUG tipo={type(result).__name__}, claves={list(result.keys()) if isinstance(result, dict) else 'N/A'}")
+            if isinstance(result, dict):
+                for k, v in result.items():
+                    logger.info(f"  clave '{k}': tipo={type(v).__name__}, valor={json.dumps(v, default=str)[:200]}")
+            elif isinstance(result, list):
+                logger.info(f"  es lista de {len(result)} elementos")
             
-            # Extraer texto
-            if 'responses' in result and len(result['responses']) > 0:
-                text_data = result['responses'][0]
-                
-                # Preferir texto completo si está disponible
-                text = ''
-                if 'fullTextAnnotation' in text_data:
-                    text = text_data['fullTextAnnotation'].get('text', '')
-                elif 'textAnnotations' in text_data and len(text_data['textAnnotations']) > 0:
-                    text = text_data['textAnnotations'][0].get('text', '')
-                
-                logger.info(f"📝 Texto extraído con Google Vision (primeros 500 chars): {text[:500]}")
-                
-                # Parsear el texto extraído
-                data = self._parse_google_vision_text(text)
-                data = self._normalize_ticket_data(data)
-                
-                logger.info(f"✅ Datos extraídos con Google Vision: {data.get('totales', {}).get('importe_total')} | {data.get('paciente', {}).get('nombre')}")
-                
+            # Intentar extraer datos de la respuesta en varios formatos posibles
+            data = None
+            
+            if isinstance(result, dict):
+                # Caso 1: viene directamente con la estructura esperada
+                if 'paciente' in result or 'totales' in result:
+                    data = result
+                # Caso 2: envuelto en 'json' o 'data' (formato común en nodos n8n)
+                elif 'json' in result and isinstance(result['json'], dict):
+                    data = result['json']
+                elif 'data' in result and isinstance(result['data'], dict):
+                    data = result['data']
+                elif 'body' in result and isinstance(result['body'], dict):
+                    data = result['body']
+                # Caso 3: tiene campo 'text' con JSON string (salida de Gemini)
+                elif 'text' in result and isinstance(result['text'], str):
+                    try:
+                        parsed = json.loads(result['text'])
+                        data = parsed
+                    except:
+                        data = result
+                else:
+                    data = result  # usar lo que vino
+            
+            elif isinstance(result, str):
+                try:
+                    data = json.loads(result)
+                except:
+                    data = self._parse_n8n_text(result)
+            
+            elif isinstance(result, list) and len(result) > 0:
+                data = result[0] if isinstance(result[0], dict) else None
+            
+            if data:
+                # Normalizar paciente por si viene como array en vez de objeto
+                if 'paciente' in data and isinstance(data['paciente'], list):
+                    data['paciente'] = data['paciente'][0] if data['paciente'] else {}
                 return data
-            else:
-                return self._get_error_ticket(page_num, "No se recibieron datos de la API")
+            
+            return self._get_error_ticket(page_num, "No se pudieron extraer datos de la respuesta")
                 
         except Exception as e:
-            logger.error(f"Error en Google Vision: {e}")
+            logger.error(f"Error en n8n: {e}")
             return self._get_error_ticket(page_num, str(e))
     
-    def _parse_google_vision_text(self, text: str) -> Dict[str, Any]:
+    def _parse_n8n_text(self, text: str) -> Dict[str, Any]:
         """
-        Parsea el texto extraído por Google Vision para identificar campos del ticket
+        Parsea texto devuelto por n8n si no viene estructurado
         """
-        logger.info("📊 Parseando texto de Google Vision...")
+        logger.info("📊 Parseando texto de n8n...")
         
         result = {
             'paciente': {},
@@ -420,15 +401,12 @@ class TicketProcessor:
         text_upper = text.upper()
         text_lines = [line.strip() for line in text.split('\n') if line.strip()]
         
-        # Buscar importe (múltiples patrones - Google Vision es muy preciso)
         importe_patterns = [
             r'TOTAL[:\s]*\$?\s*(\d+[\.,]?\d*)',
             r'IMPORTE[:\s]*\$?\s*(\d+[\.,]?\d*)',
             r'MONTO[:\s]*\$?\s*(\d+[\.,]\d{2})',
             r'\$\s*(\d+[\.,]\d{2})',
             r'(\d{3,7}[\.,]\d{2})',
-            r'\$\s*(\d+)',
-            r'(\d+\s*\d{3},\d{2})',
         ]
         
         for pattern in importe_patterns:
@@ -437,33 +415,27 @@ class TicketProcessor:
                 try:
                     importe_str = match.group(1).replace('.', '').replace(',', '.').replace(' ', '')
                     importe = float(importe_str)
-                    if importe > 0 and importe < 10000000:  # Filtrar valores absurdos
+                    if importe > 0 and importe < 10000000:
                         result['totales']['importe_total'] = importe
-                        logger.info(f"💰 Google Vision detectó importe: ${importe}")
                         break
                 except:
                     pass
         
-        # Buscar nombre
         for line in text_lines:
-            skip = ['NOMBRE', 'CLIENTE', 'PASAJERO', 'TOTAL', 'IMPORTE', 'FECHA', 'TICKET', 'BOLETO', 'PEAJE', 'DNI', 'DOC', 'DISTANCIA', 'PAGINA', 'COBRO']
+            skip = ['NOMBRE', 'CLIENTE', 'PASAJERO', 'TOTAL', 'IMPORTE', 'FECHA', 'TICKET']
             if any(w in line.upper() for w in skip):
                 continue
-            # Buscar patrones de nombre (dos palabras que parecen nombre + apellido)
             match = re.search(r'^([A-ZÁÉÍÓÚÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,}){1,2})', line)
             if match and 3 < len(line) < 45:
                 result['paciente']['nombre'] = match.group(1).strip()
                 break
         
-        # Buscar DNI con más patrones
         dni_patterns = [
             r'DNI[:\s]*(\d{6,9})',
             r'DNI\s+(\d{6,8})',
             r'(\d{2}\.\d{3}\.\d{3})',
             r'(\d{7,8})',
-            r'DOC[:\s]*(\d+)',
         ]
-        
         for pattern in dni_patterns:
             match = re.search(pattern, text_upper)
             if match:
@@ -471,13 +443,10 @@ class TicketProcessor:
                 result['nro_doc'] = match.group(1).strip()
                 break
         
-        # Buscar fecha con más precisión
         fecha_patterns = [
             r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})',
-            r'(\d{4})[/\-](\d{2})[/\-](\d{2})',
             r'FECHA[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})',
         ]
-        
         for pattern in fecha_patterns:
             match = re.search(pattern, text_upper)
             if match:
@@ -485,71 +454,6 @@ class TicketProcessor:
                 result['fecha_ticket'] = match.group(0)
                 break
         
-        # Buscar distancia
-        dist_patterns = [
-            r'(\d+[\.,]?\d*)\s*(?:KM|KILÓMETROS|KILOMETROS|KM\.)',
-            r'DISTANCIA[:\s]*(\d+[\.,]?\d*)',
-            r'(\d+)\s*KM',
-        ]
-        
-        for pattern in dist_patterns:
-            match = re.search(pattern, text_upper)
-            if match:
-                try:
-                    distancia = float(match.group(1).replace(',', '.'))
-                    if distancia > 0:
-                        result['viaje']['distancia'] = distancia
-                        result['viaje']['unidad'] = 'km'
-                except:
-                    pass
-                break
-        
-        # Buscar pasaje/ticket
-        pasaje_patterns = [
-            r'PASAJE[:\s]*([A-Z0-9\-]+)',
-            r'TICKET[:\s]*([A-Z0-9\-]+)',
-            r'BOLETO[:\s]*([A-Z0-9\-]+)',
-            r'NRO[\.\s#]*(\d+)',
-        ]
-        
-        for pattern in pasaje_patterns:
-            match = re.search(pattern, text_upper)
-            if match:
-                result['pasaje'] = match.group(1).strip()
-                break
-        
-        # Buscar importe pasaje
-        pasaje_importe_patterns = [
-            r'PASAJE[:\s]*\$?\s*(\d+[\.,]?\d*)',
-            r'TARIFA[:\s]*\$?\s*(\d+[\.,]?\d*)',
-        ]
-        
-        for pattern in pasaje_importe_patterns:
-            match = re.search(pattern, text_upper)
-            if match:
-                try:
-                    importe = float(match.group(1).replace('.', '').replace(',', '.'))
-                    result['totales']['importe_pasaje'] = importe
-                except:
-                    pass
-                break
-        
-        # Buscar peaje
-        peaje_patterns = [
-            r'PEAJE[:\s]*\$?\s*(\d+[\.,]?\d*)',
-        ]
-        
-        for pattern in peaje_patterns:
-            match = re.search(pattern, text_upper)
-            if match:
-                try:
-                    importe = float(match.group(1).replace('.', '').replace(',', '.'))
-                    result['totales']['importe_peaje'] = importe
-                except:
-                    pass
-                break
-        
-        # Por defecto marcar como no encontrado
         result['paciente']['encontrado'] = False
         result['paciente']['requiere_seleccion'] = True
         
@@ -609,6 +513,10 @@ class TicketProcessor:
         """
         Preprocesa la imagen para mejorar el reconocimiento de OCR
         """
+        if not CV2_AVAILABLE:
+            logger.warning("OpenCV no disponible, omitiendo preprocesamiento")
+            return img
+        
         logger.info("🔧 Preprocesando imagen para OCR...")
         
         # Convertir a numpy array
