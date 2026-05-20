@@ -1,0 +1,24 @@
+[Unit]
+Description=Gestión de Tickets - CEDIR
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=july
+Group=july
+WorkingDirectory=/home/investigacion/tickets
+Environment="PATH=/home/investigacion/tickets/venv/bin"
+EnvironmentFile=/home/investigacion/tickets/.env
+ExecStart=/home/investigacion/tickets/venv/bin/gunicorn wsgi:app -c /home/investigacion/tickets/gunicorn_config.py
+Restart=always
+RestartSec=10
+
+# Limitar el tiempo de inicio
+TimeoutStartSec=30
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
