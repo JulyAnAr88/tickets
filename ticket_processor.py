@@ -7,11 +7,18 @@ import base64
 import requests
 from unittest import result
 import sqlalchemy as sa
-from sqlalchemy import text
+from sqlalchemy import text as _sa_text
 from datetime import datetime
 from pathlib import Path
 import google.generativeai as genai
 from PIL import Image
+
+# Esquema dinámico (misma lógica que protocolo_manager)
+_SCHEMA = 'cedir'
+def text(sql: str):
+    if _SCHEMA and _SCHEMA != 'cedir':
+        sql = sql.replace('cedir.', f'{_SCHEMA}.')
+    return _sa_text(sql)
 
 # Importaciones para OCR local
 try:
@@ -46,7 +53,8 @@ class TicketProcessor:
     """Procesador de tickets médicos para inserción en base de datos"""
     
     def __init__(self, api_key: str, db_connection_string: str, 
-                 processed_folder: str = "processed", prompts_folder: str = "prompts"):
+                 processed_folder: str = "processed", prompts_folder: str = "prompts",
+                 schema: str = 'cedir'):
         """
         Inicializa el procesador
         
@@ -55,13 +63,17 @@ class TicketProcessor:
             db_connection_string: String de conexión PostgreSQL
             processed_folder: Carpeta donde mover archivos procesados
             prompts_folder: Carpeta donde están los archivos de prompts
+            schema: Esquema de base de datos ('cedir' o 'auxiliar')
         """
+        global _SCHEMA
+        _SCHEMA = schema
         genai.configure(api_key=api_key)
         
         # Inicializar gestores
+        self.schema = schema
         self.prompt_manager = PromptManager(prompts_folder)
         self.engine = sa.create_engine(db_connection_string)
-        self.protocolo_manager = ProtocoloManager(self.engine)
+        self.protocolo_manager = ProtocoloManager(self.engine, schema)
         
         # Configuración del modelo
         model_config = self.prompt_manager.get_model_config()
@@ -804,8 +816,8 @@ class TicketProcessor:
         pasaje = str(pasaje_raw) if pasaje_raw is not None else ''
         usuario_registro = usuario or 'sistema'
 
-        query = text("""
-            INSERT INTO cedir.ticket (
+        query = text(f"""
+            INSERT INTO {self.schema}.ticket (
                 paciente, fecha_viaje, fecha_ticket, distancia, unidad, 
                 protocolo, importe_total, pasaje, create_time, usuario, id_paciente
             ) VALUES (
@@ -1324,7 +1336,10 @@ class FlaskTicketProcessor:
         if not api_key or not db_url:
             raise ValueError("Faltan configuraciones: GEMINI_API_KEY y DATABASE_URL")
         
-        self.processor = TicketProcessor(api_key, db_url, processed_folder, prompts_folder)
+        self.processor = TicketProcessor(
+            api_key, db_url, processed_folder, prompts_folder,
+            schema=app.config.get('DB_SCHEMA', 'cedir')
+        )
         app.ticket_processor = self
     
     def process_uploaded_file(self, file_path: str, usuario: str = None, 

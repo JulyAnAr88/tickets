@@ -20,6 +20,8 @@ app.config.from_object(Config)
 # Configurar sesión permanente (30 días)
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
 
 logging.basicConfig(
     level=logging.INFO,

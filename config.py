@@ -35,8 +35,6 @@ class Config:
     PROMPTS_FOLDER = os.environ.get('PROMPTS_FOLDER', 'prompts')
 
     # Configuración de uploads (para imágenes)
-    # UPLOAD_FOLDER = 'static/uploads'
-    # PROCESSED_FOLDER = 'static/processed'
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', '/')
     PROCESSED_FOLDER = os.environ.get('PROCESSED_FOLDER', '/')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max

@@ -1,22 +1,40 @@
 import sqlalchemy as sa
-from sqlalchemy import text
+from sqlalchemy import text as _sa_text
 from typing import Any, List, Dict, Optional, Tuple
 import logging
 from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
+# Esquema de base de datos (se setea desde afuera)
+_SCHEMA = 'cedir'
+
+def set_schema(schema: str):
+    """Cambia el esquema de base de datos en tiempo de ejecución"""
+    global _SCHEMA
+    _SCHEMA = schema
+    logger.info(f"📦 ProtocoloManager usando esquema: {schema}")
+
+def text(sql: str):
+    """Wrapper de SQLAlchemy text() que reemplaza el esquema dinámicamente"""
+    if _SCHEMA and _SCHEMA != 'cedir':
+        sql = sql.replace('cedir.', f'{_SCHEMA}.')
+    return _sa_text(sql)
+
 class ProtocoloManager:
     """Gestiona la búsqueda y actualización de protocolos y pacientes"""
     
-    def __init__(self, engine):
+    def __init__(self, engine, schema='cedir'):
         """
         Inicializa el gestor
         
         Args:
             engine: SQLAlchemy engine para conexión a BD
+            schema: Esquema de base de datos ('cedir' o 'auxiliar')
         """
         self.engine = engine
+        self.schema = schema
+        set_schema(schema)
     
     # ============ MÉTODOS PARA PROTOCOLOS ============
     

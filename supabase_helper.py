@@ -96,8 +96,7 @@ def sign_in_user(email, password):
                 'id': response.user.id,
                 'email': response.user.email,
                 'full_name': full_name,
-                'avatar_url': user_metadata.get('avatar_url', ''),
-                'user_metadata': user_metadata
+                'avatar_url': user_metadata.get('avatar_url', '')
             }
             
             return {
@@ -120,14 +119,12 @@ def get_current_user():
     if 'full_name' not in user or not user['full_name']:
         user['full_name'] = user.get('email', '').split('@')[0]
     
-    # Asegurar que user_metadata existe
+    # Asegurar que user_metadata existe (para compatibilidad)
     if 'user_metadata' not in user:
         user['user_metadata'] = {
             'full_name': user['full_name'],
             'email': user.get('email', '')
         }
-    
-    return user
 
 def get_user_display_name(user=None):
     """Obtiene el nombre para mostrar del usuario"""
