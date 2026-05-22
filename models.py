@@ -1,11 +1,16 @@
+import os
+from dotenv import load_dotenv
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+
+load_dotenv()
+DB_SCHEMA = os.environ.get('DB_SCHEMA', 'cedir')
 
 db = SQLAlchemy()
 
 class Ticket(db.Model):
     __tablename__ = 'ticket'
-    __table_args__ = {'schema': 'cedir'}
+    __table_args__ = {'schema': DB_SCHEMA}
     
     id = db.Column(db.Integer, primary_key=True)
     paciente = db.Column(db.String(150), nullable=True)

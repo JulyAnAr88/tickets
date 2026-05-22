@@ -90,11 +90,22 @@ def inject_now():
     from datetime import datetime
     return {'now': datetime.now()}
 
+@app.before_request
+def require_login():
+    public_routes = ['login', 'static', 'logout', 'auth_logout']
+    if request.endpoint in public_routes:
+        return None
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    return None
+
 # ============ RUTAS DE AUTENTICACIÓN ============
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Página de inicio de sesión"""
+    if 'user' in session:
+        return redirect(url_for('abm'))
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
@@ -103,6 +114,9 @@ def login():
         
         if result['success']:
             flash(result['message'], 'success')
+            if result.get('force_password_change'):
+                session['force_password_change'] = True
+                return redirect(url_for('cambiar_password_obligatorio'))
             next_page = request.args.get('next')
             return redirect(next_page or url_for('abm'))
         else:
@@ -111,6 +125,7 @@ def login():
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
+@supabase_helper.login_required
 def register():
     """Página de registro de usuario"""
     if request.method == 'POST':
@@ -182,11 +197,48 @@ def cambiar_password():
     else:
         result = supabase_helper.change_password(current_password, new_password)
         if result['success']:
+            # Si estaba en cambio obligatorio, quitar flag
+            if session.pop('force_password_change', None):
+                supabase_helper.update_user_metadata({'force_password_change': False})
             flash(result['message'], 'success')
         else:
             flash(result['message'], 'danger')
     
     return redirect(url_for('profile'))
+
+@app.route('/profile/cambiar_password_obligatorio', methods=['GET', 'POST'])
+@supabase_helper.login_required
+def cambiar_password_obligatorio():
+    """Cambio de contraseña obligatorio (primer inicio de sesión)"""
+    if not session.get('force_password_change'):
+        return redirect(url_for('profile'))
+    
+    if request.method == 'POST':
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        if not new_password or not confirm_password:
+            flash('Todos los campos son obligatorios', 'warning')
+        elif len(new_password) < 6:
+            flash('La nueva contraseña debe tener al menos 6 caracteres', 'warning')
+        elif new_password != confirm_password:
+            flash('Las contraseñas nuevas no coinciden', 'danger')
+        else:
+            current_password = request.form.get('current_password', '')
+            if not current_password:
+                flash('Debes ingresar tu contraseña actual', 'warning')
+            else:
+                result = supabase_helper.change_password(current_password, new_password)
+                if result['success']:
+                    session.pop('force_password_change', None)
+                    supabase_helper.update_user_metadata({'force_password_change': False})
+                    flash('Contraseña cambiada exitosamente', 'success')
+                    return redirect(url_for('abm'))
+                else:
+                    flash(result['message'], 'danger')
+    
+    user = supabase_helper.get_current_user()
+    return render_template('cambiar_password_obligatorio.html', user=user)
 
 # ============ RUTAS PROTEGIDAS ============
 
@@ -545,6 +597,7 @@ def debug_user():
     })
 
 @app.route('/formulario', methods=['GET', 'POST'])
+@supabase_helper.login_required
 def formulario():
     form = TicketForm()
     
@@ -1063,7 +1116,7 @@ def admin_crear_usuario():
             result = supabase_helper.sign_up_user(
                 email=email,
                 password=password,
-                metadata={'full_name': full_name}
+                metadata={'full_name': full_name, 'force_password_change': True}
             )
             
             if result.get('success'):

@@ -38,6 +38,15 @@ def login_required(f):
         if 'user' not in session:
             flash('Por favor, inicia sesión para acceder a esta página', 'warning')
             return redirect(url_for('login'))
+        
+        # Si el usuario debe cambiar su contraseña, redirigir (excepto a las rutas permitidas)
+        if session.get('force_password_change'):
+            # Rutas que están exentas de la redirección
+            exempt_endpoints = ['cambiar_password_obligatorio', 'logout', 'auth_logout', 'login', 'static']
+            if request.endpoint not in exempt_endpoints:
+                flash('Debes cambiar tu contraseña antes de continuar', 'warning')
+                return redirect(url_for('cambiar_password_obligatorio'))
+        
         return f(*args, **kwargs)
     return decorated_function
 
@@ -102,7 +111,8 @@ def sign_in_user(email, password):
             return {
                 'success': True, 
                 'user': session['user'], 
-                'message': f'Bienvenido {full_name}!'
+                'message': f'Bienvenido {full_name}!',
+                'force_password_change': user_metadata.get('force_password_change', False)
             }
         else:
             return {'success': False, 'message': 'Credenciales inválidas'}
@@ -125,6 +135,8 @@ def get_current_user():
             'full_name': user['full_name'],
             'email': user.get('email', '')
         }
+    
+    return user
 
 def get_user_display_name(user=None):
     """Obtiene el nombre para mostrar del usuario"""
