@@ -9,3 +9,4 @@ error_res*
 /static/incoming/
 /static/processed/
 gestion-tickets.service
+/logs/
