@@ -1128,14 +1128,14 @@ def admin_crear_usuario():
     
     return render_template('admin_crear_usuario.html')
 
-if __name__ == '__main__':
+def init_db():
+    """Inicializar esquema de base de datos (search_path + tablas)"""
     with app.app_context():
-        # Establecer el esquema de base de datos
         esquema = app.config.get('DB_SCHEMA', 'cedir')
         print(f"🔧 Usando esquema de base de datos: {esquema}")
-        
-        # Establecer search_path para las consultas
         db.session.execute(text(f"SET search_path TO {esquema}"))
-        
         db.create_all()
+
+if __name__ == '__main__':
+    init_db()
     app.run(debug=True, host='0.0.0.0', port=5151)

@@ -4,24 +4,19 @@
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Crear directorio de logs si no existe
-mkdir -p "$DIR/logs"
+# Cargar .env para tener LOG_DIR y otras variables
+set -a
+. "$DIR/.env" 2>/dev/null || true
+set +a
+
+# Directorio de logs: LOG_DIR del .env o default
+LOG_DIR="${LOG_DIR:-$DIR/logs}"
+mkdir -p "$LOG_DIR"
 
 # Activar el entorno virtual
 . "$DIR/venv/bin/activate"
 
 # Iniciar Gunicorn
 exec gunicorn \
-    -w 2 \
-    -k gthread \
-    --threads 4 \
-    --timeout 180 \
-    -b 0.0.0.0:5151 \
-    --limit-request-line 8190 \
-    --limit-request-field_size 8190 \
-    --max-requests 1000 \
-    --max-requests-jitter 50 \
-    --access-logfile "$DIR/logs/access.log" \
-    --error-logfile "$DIR/logs/error.log" \
-    --log-level info \
-    wsgi:app
+    -c "$DIR/gunicorn_config.py" \
+    app:app
