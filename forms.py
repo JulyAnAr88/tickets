@@ -58,6 +58,8 @@ class TicketForm(FlaskForm):
     
     preseleccion_no_completo = BooleanField('Preselección No Completa', default=False)
     
+    es_traslado = BooleanField('Es Traslado', default=False)
+    
     subtotal = DecimalField('Subtotal', places=2, validators=[Optional()])
     
     importe_total = DecimalField('Importe Total', places=2, validators=[Optional()])

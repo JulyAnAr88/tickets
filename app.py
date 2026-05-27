@@ -29,13 +29,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Inicializar procesador de tickets
-try:
-    ticket_processor = FlaskTicketProcessor(app)
-    print("✅ Procesador de tickets inicializado correctamente")
-except Exception as e:
-    print(f"⚠️ Error inicializando procesador de tickets: {e}")
-    ticket_processor = None
+# Inicialización lazy del procesador de tickets (para no cargar numpy/PIL/Gemini al arranque)
+_ticket_processor = None
+
+def get_ticket_processor():
+    global _ticket_processor
+    if _ticket_processor is None:
+        try:
+            _ticket_processor = FlaskTicketProcessor(app)
+            print("✅ Procesador de tickets inicializado correctamente")
+        except Exception as e:
+            print(f"⚠️ Error inicializando procesador de tickets: {e}")
+            _ticket_processor = None
+    return _ticket_processor
 
 # Configuración de Superset
 SUPERSET_URL = "http://192.168.37.182:8088"
@@ -625,7 +631,8 @@ def formulario():
             subtotal=form.subtotal.data,
             importe_total=form.importe_total.data,
             usuario=form.usuario.data,
-            create_time=datetime.utcnow()
+            create_time=datetime.utcnow(),
+            es_traslado=form.es_traslado.data
         )
         
         try:
@@ -743,6 +750,7 @@ def editar(id):
         ticket.cantidad_comidas = form.cantidad_comidas.data or 1
         ticket.cantidad_noches = form.cantidad_noches.data or 0
         ticket.preseleccion_no_completo = form.preseleccion_no_completo.data
+        ticket.es_traslado = form.es_traslado.data
         ticket.subtotal = form.subtotal.data
         ticket.importe_total = form.importe_total.data
         nombre_usuario = user.get('full_name') or \
@@ -904,6 +912,11 @@ def procesar_ticket(id):
                             pass
                     ticket.distancia = viaje.get('distancia', ticket.distancia)
                     ticket.unidad = viaje.get('unidad', ticket.unidad)
+                    if ticket.distancia or ticket.unidad:
+                        ticket.es_traslado = True
+                
+                if extracted.get('es_traslado'):
+                    ticket.es_traslado = extracted['es_traslado']
                 
                 if extracted.get('fecha_ticket'):
                     try:

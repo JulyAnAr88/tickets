@@ -66,7 +66,11 @@ function eliminarMultiples(btn) {
         return;
     }
     
-    if (!confirm(`¿Estás seguro de eliminar ${checkboxes.length} ticket(s)?`)) {
+    let mensaje = `¿Estás seguro de eliminar ${checkboxes.length} ticket(s)?\n\n`;
+    mensaje += '⚠️ Los tickets con reintegros asociados también se eliminarán.\n';
+    mensaje += 'Esta acción no se puede deshacer.';
+    
+    if (!confirm(mensaje)) {
         return;
     }
     

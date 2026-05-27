@@ -642,6 +642,14 @@ class TicketProcessor:
                 result['pasaje'] = match.group(1)
                 break
         
+        # ==================== DETECTAR KEYWORDS DE TRASLADO ====================
+        KEYWORDS_TRASLADO = ['TAXI', 'REMIS', 'TRASLADO', 'TRANSPORTE', 'CHOFER', 'CHÓFER', 'VIAJE', 'RECORRIDO']
+        for keyword in KEYWORDS_TRASLADO:
+            if keyword in text_upper:
+                result['_keyword_traslado'] = True
+                logger.info(f"🚕 Keyword de traslado detectada: {keyword}")
+                break
+        
         # Por defecto marcar como no encontrado
         result['paciente']['encontrado'] = False
         result['paciente']['requiere_seleccion'] = True
@@ -755,6 +763,18 @@ class TicketProcessor:
             if totales_data[0].get("importe_total"):
                 normalized["totales"]["importe_total"] = totales_data[0]["importe_total"]
 
+        # ==================== DETECTAR ES_TRASLADO ====================
+        es_traslado = False
+        if data.get('es_traslado'):
+            es_traslado = True
+        if normalized['viaje'].get('distancia') or normalized['viaje'].get('unidad'):
+            es_traslado = True
+        if data.get('_keyword_traslado'):
+            es_traslado = True
+        normalized['es_traslado'] = es_traslado
+        if es_traslado:
+            logger.info("🚕 Ticket marcado como traslado")
+
         logger.info(f"Datos normalizados: paciente='{normalized['paciente']['nombre']}', DNI='{normalized['paciente']['dni']}', importe={normalized['totales']['importe_total']}")
 
         return normalized
@@ -766,7 +786,8 @@ class TicketProcessor:
             "fecha_ticket": "",
             "paciente": {"nombre": "", "dni": ""},
             "viaje": {"fecha_viaje": "", "distancia": None, "unidad": ""},
-            "totales": {"subtotal": None, "importe_total": None}
+            "totales": {"subtotal": None, "importe_total": None},
+            "es_traslado": False
         }
     
     def extract_tickets_from_pdf(self, pdf_path: str, validate: bool = True) -> List[Dict[str, Any]]:
@@ -815,14 +836,17 @@ class TicketProcessor:
         pasaje_raw = data.get('pasaje', '')
         pasaje = str(pasaje_raw) if pasaje_raw is not None else ''
         usuario_registro = usuario or 'sistema'
+        es_traslado = data.get('es_traslado', False)
 
         query = text(f"""
             INSERT INTO {self.schema}.ticket (
                 paciente, fecha_viaje, fecha_ticket, distancia, unidad, 
-                protocolo, importe_total, pasaje, create_time, usuario, id_paciente
+                protocolo, importe_total, pasaje, create_time, usuario, id_paciente,
+                es_traslado
             ) VALUES (
                 :paciente, :fecha_viaje, :fecha_ticket, :distancia, :unidad,
-                :protocolo, :importe_total, :pasaje, NOW(), :usuario, :id_paciente
+                :protocolo, :importe_total, :pasaje, NOW(), :usuario, :id_paciente,
+                :es_traslado
             ) RETURNING id
         """)
 
@@ -836,7 +860,8 @@ class TicketProcessor:
             'importe_total': importe_total,
             'pasaje': pasaje[:150] if pasaje else None,
             'usuario': usuario_registro[:100] if usuario_registro else None,
-            'id_paciente': id_paciente
+            'id_paciente': id_paciente,
+            'es_traslado': es_traslado
         }
 
         compiled = query.bindparams(**params).compile(

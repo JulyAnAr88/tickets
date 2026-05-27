@@ -372,6 +372,19 @@ class OCRProcessor:
                 if i + 1 < len(text_lines):
                     result['viaje']['hasta'] = text_lines[i + 1].strip()
         
+        # ==================== DETECTAR KEYWORDS DE TRASLADO ====================
+        KEYWORDS_TRASLADO = ['TAXI', 'REMIS', 'TRASLADO', 'TRANSPORTE', 'CHOFER', 'CHÓFER', 'VIAJE', 'RECORRIDO']
+        for keyword in KEYWORDS_TRASLADO:
+            if keyword in text_upper:
+                result['es_traslado'] = True
+                logger.info(f"🚕 Keyword de traslado detectada: {keyword}")
+                break
+        
+        # ==================== DETECTAR TRASLADO POR DISTANCIA ====================
+        if result['viaje'].get('distancia') or result['viaje'].get('unidad'):
+            result['es_traslado'] = True
+            logger.info(f"🚕 Distancia/unidad detectada, marcado como traslado")
+
         # Por defecto, marcar como no encontrado (requiere validación)
         result['paciente']['encontrado'] = False
         result['paciente']['requiere_seleccion'] = True

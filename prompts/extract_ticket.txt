@@ -10,7 +10,8 @@ Extrae SOLO estos campos del ticket
   "fecha_ticket": "DD/MM/AA",
   "paciente": {"nombre": "nombre apellido", "dni": "número"},
   "viaje": {"fecha_viaje": "DD/MM/AA", "distancia": número, "unidad": "km"},
-  "totales": {"importe_total": número}
+  "totales": {"importe_total": número},
+  "es_traslado": true
 }
 ---
 
@@ -67,6 +68,7 @@ Reglas:
 - Si no ves un campo, déjalo como string vacío ""
 - La distancia es un número (ej: 40.6)
 - El importe total es un número (ej: 45540.0)
+- "es_traslado" debe ser `true` si el ticket es de transporte/traslado (contiene palabras como taxi, remis, viaje, km, distancia, traslado, transporte, chofer, recorrido). Caso contrario `false`.
 
 RESPONDE SOLO CON EL JSON, NADA MÁS.
 

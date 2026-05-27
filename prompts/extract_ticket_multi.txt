@@ -34,7 +34,8 @@ Salida:
         "subtotal": null,
         "otros_tributos": null,
         "importe_total": null
-      }
+      },
+      "es_traslado": true
     }
   ]
 }
@@ -49,3 +50,4 @@ Reglas específicas:
 - "distancia": número.
 - "unidad": unidad visible.
 - Extraer solo lo visible.
+- "es_traslado": true si el ticket es de transporte/traslado (palabras como taxi, remis, viaje, km, distancia, traslado, transporte, chofer, recorrido). false si no.
