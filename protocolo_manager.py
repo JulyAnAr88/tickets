@@ -3,6 +3,7 @@ from sqlalchemy import text as _sa_text
 from typing import Any, List, Dict, Optional, Tuple
 import logging
 from difflib import SequenceMatcher
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,18 @@ class ProtocoloManager:
                 return [row[0] for row in result.fetchall() if row[0]]
         except Exception as e:
             logger.error(f"Error obteniendo protocolos: {e}")
+            return []
+
+    def get_all_protocolos_con_id(self) -> List[dict]:
+        """Obtiene todos los protocolos con id y nombre"""
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text(
+                    "SELECT id, identificador_protocolo FROM cedir.protocolo ORDER BY identificador_protocolo"
+                ))
+                return [{'id': row[0], 'nombre': row[1]} for row in result.fetchall() if row[1]]
+        except Exception as e:
+            logger.error(f"Error obteniendo protocolos con id: {e}")
             return []
     
     def find_protocolo(self, texto: str, threshold: float = 0.7) -> Optional[str]:
@@ -462,6 +475,21 @@ class ProtocoloManager:
 
         return results
     
+    def _buscar_id_protocolo(self, identificador: str) -> Optional[int]:
+        """Busca el ID de un protocolo por su identificador_protocolo."""
+        if not identificador:
+            return None
+        try:
+            with self.engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT id FROM cedir.protocolo WHERE identificador_protocolo = :id"),
+                    {'id': identificador}
+                ).fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            logger.error(f"Error buscando protocolo '{identificador}': {e}")
+            return None
+
     def buscar_candidatos_similares(self, nombre_busqueda: str = None, dni_busqueda: str = None, limit: int = 5) -> List[Dict[str, Any]]:
         """
         Busca candidatos similares cuando no hay coincidencia exacta
@@ -569,6 +597,59 @@ class ProtocoloManager:
                     if c['persona_id'] not in seen:
                         seen.add(c['persona_id'])
                         unique_candidates.append(c)
+
+                # Si no hay suficientes candidatos, buscar en Geclisa
+                if len(unique_candidates) < limit:
+                    try:
+                        from cedir_common.geclisa import buscar_paciente_geclisa_por_dni, buscar_pacientes_geclisa_por_nombre
+
+                        if dni_busqueda:
+                            geclisa_pac = buscar_paciente_geclisa_por_dni(dni_busqueda)
+                            if geclisa_pac:
+                                already_seen = any(
+                                    c.get('ficha_id') == geclisa_pac['ficha_id']
+                                    for c in unique_candidates
+                                )
+                                if not already_seen and geclisa_pac['nro_doc']:
+                                    unique_candidates.append({
+                                        'persona_id': None,
+                                        'ficha_id': geclisa_pac['ficha_id'],
+                                        'nombre': geclisa_pac['nombre'],
+                                        'apellido': geclisa_pac['apellido'],
+                                        'nro_doc': int(geclisa_pac['nro_doc']),
+                                        'protocolo': '',
+                                        'protocolo_id': None,
+                                        'similitud': 99,
+                                        'tipo_coincidencia': 'dni_geclisa',
+                                        'nombre_completo': f"{geclisa_pac['nombre']} {geclisa_pac['apellido']}",
+                                        'origen': 'geclisa',
+                                    })
+
+                        if nombre_busqueda and len(unique_candidates) < limit:
+                            geclisa_list = buscar_pacientes_geclisa_por_nombre(
+                                nombre_busqueda,
+                                limit=limit - len(unique_candidates)
+                            )
+                            for gp in geclisa_list:
+                                if not any(
+                                    c.get('ficha_id') == gp['ficha_id']
+                                    for c in unique_candidates
+                                ):
+                                    unique_candidates.append({
+                                        'persona_id': None,
+                                        'ficha_id': gp['ficha_id'],
+                                        'nombre': gp['nombre'],
+                                        'apellido': gp['apellido'],
+                                        'nro_doc': int(gp['nro_doc']) if gp['nro_doc'] else None,
+                                        'protocolo': '',
+                                        'protocolo_id': None,
+                                        'similitud': 85,
+                                        'tipo_coincidencia': 'nombre_geclisa',
+                                        'nombre_completo': gp['nombre_completo'],
+                                        'origen': 'geclisa',
+                                    })
+                    except Exception as e:
+                        logger.error(f"Error buscando candidatos en Geclisa: {e}")
 
                 return unique_candidates[:limit]
 
@@ -789,6 +870,48 @@ class ProtocoloManager:
                         ticket_data['paciente']['nombre_discrepancia'] = True
                         ticket_data['paciente']['nombre_ocr'] = nombre_extraido
                         ticket_data['paciente']['nombre_bd'] = nombre_bd
+    
+                else:
+                    # No encontrado en cedir → buscar en Geclisa por DNI
+                    logger.info(f"🔍 No encontrado en cedir, buscando en Geclisa por DNI: {dni_limpio}")
+                    try:
+                        from cedir_common.paciente_service import upsert_paciente_en_cedir
+                        from cedir_common.geclisa import buscar_paciente_geclisa_por_dni
+
+                        geclisa_pac = buscar_paciente_geclisa_por_dni(dni_limpio)
+                        if geclisa_pac:
+                            protocolo_str = ticket_data.get('paciente', {}).get('protocolo', '')
+                            protocolo_id = None
+                            if protocolo_str:
+                                protocolo_id = self._buscar_id_protocolo(protocolo_str)
+
+                            with Session(self.engine) as session:
+                                result = upsert_paciente_en_cedir(
+                                    ficha_id=geclisa_pac['ficha_id'],
+                                    db_session=session,
+                                    protocolo_id=protocolo_id,
+                                )
+                                session.commit()
+
+                            logger.info(f"✅ Paciente creado en cedir desde Geclisa: "
+                                        f"{geclisa_pac['nombre']} {geclisa_pac['apellido']} "
+                                        f"(persona {result['persona_id']})")
+
+                            paciente_info = {
+                                'persona_id': result['persona_id'],
+                                'nombre': geclisa_pac['nombre'],
+                                'apellido': geclisa_pac['apellido'],
+                                'nro_doc': int(geclisa_pac['nro_doc']),
+                                'protocolo': protocolo_str,
+                                'protocolo_id': protocolo_id,
+                                'nombre_completo': f"{geclisa_pac['nombre']} {geclisa_pac['apellido']}",
+                                'score': 100,
+                                'encontrado_por': 'dni_geclisa',
+                            }
+                            encontrado_por = 'dni_geclisa'
+                            ticket_data['paciente']['nombre_discrepancia'] = False
+                    except Exception as e:
+                        logger.error(f"Error en upsert desde Geclisa: {e}", exc_info=True)
     
         # PRIORIDAD 2: Búsqueda por nombre si no se encontró por DNI
         if not paciente_info and nombre_extraido:

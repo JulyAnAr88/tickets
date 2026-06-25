@@ -67,6 +67,47 @@
         </div>
     </div>
 
+    <!-- ========== MODAL PARA SELECCIÓN DE PROTOCOLO EN PACIENTE GECLISA ========== -->
+    <div class="modal fade" id="seleccionarProtocoloGeclisaModal" tabindex="-1" aria-labelledby="seleccionarProtocoloGeclisaModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title" id="seleccionarProtocoloGeclisaModalLabel">
+                        <i class="bi bi-person-plus"></i> Nuevo paciente en cedir
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <h6 class="text-muted mb-3">Paciente desde Geclisa</h6>
+                        <p class="mb-1"><strong id="geclisaPacienteNombre"></strong></p>
+                        <p class="text-muted"><small id="geclisaPacienteDni"></small></p>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label for="geclisaProtocoloSelect" class="form-label">Protocolo</label>
+                        <select class="form-select" id="geclisaProtocoloSelect">
+                            <option value="">-- Sin protocolo --</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="geclisaIdentificadorInput" class="form-label">Identificador</label>
+                        <input type="text" class="form-control" id="geclisaIdentificadorInput"
+                            placeholder="Ej: 10709.0">
+                        <div class="form-text">Opicional. Identificador del paciente dentro del protocolo (ej: número de ficha, ID de estudio).</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-info text-white" id="btnConfirmarPacienteGeclisa">
+                        <i class="bi bi-check-circle"></i> Confirmar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ========== 🆕 INPUT OCULTO PARA ERRORES (aquí, después de flash) ========== -->
     {% if request.args.get('error') %}
     <input type="hidden" id="errorData" value='{{ request.args.get("error")|safe }}'>

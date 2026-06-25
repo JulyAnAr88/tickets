@@ -63,6 +63,12 @@ function realizarBusquedaCandidatos(ticketId, nombre, dni) {
                     
                     const similitudColor = cand.similitud > 80 ? 'success' : cand.similitud > 60 ? 'warning' : 'danger';
                     
+                    const tipoLabel = cand.tipo_coincidencia === 'dni_cercano' ? 'DNI cercano'
+                        : cand.tipo_coincidencia === 'dni_geclisa' ? 'Geclisa (DNI)'
+                        : cand.tipo_coincidencia === 'nombre_geclisa' ? 'Geclisa (nombre)'
+                        : 'Nombre similar';
+                    const badgeClass = cand.origen === 'geclisa' ? 'info' : similitudColor;
+
                     btn.innerHTML = `
                         <div class="d-flex justify-content-between align-items-start">
                             <div class="flex-grow-1">
@@ -72,10 +78,11 @@ function realizarBusquedaCandidatos(ticketId, nombre, dni) {
                                     <i class="bi bi-clipboard-check"></i> Protocolo: ${escapeHtml(cand.protocolo || 'N/A')}
                                 </small>
                                 <small class="text-muted d-block">
-                                    <i class="bi bi-info-circle"></i> Tipo: ${cand.tipo_coincidencia === 'dni_cercano' ? 'DNI cercano' : 'Nombre similar'}
+                                    <i class="bi bi-info-circle"></i> Tipo: ${tipoLabel}
+                                    ${cand.origen === 'geclisa' ? ' <span class="badge bg-info">Nuevo en cedir</span>' : ''}
                                 </small>
                             </div>
-                            <span class="badge bg-${similitudColor} rounded-pill ms-2 mt-1">
+                            <span class="badge bg-${badgeClass} rounded-pill ms-2 mt-1">
                                 ${Math.round(cand.similitud)}%
                             </span>
                         </div>
@@ -154,6 +161,12 @@ function seleccionarPaciente(ticketId, paciente) {
     console.log('seleccionarPaciente - ticketId:', ticketId, 'tipo:', typeof ticketId);
     console.log('seleccionarPaciente - paciente:', paciente);
     
+    // Si es paciente de Geclisa (sin persona_id), mostrar modal de protocolo primero
+    if (paciente.origen === 'geclisa' && !paciente.persona_id) {
+        mostrarModalProtocoloGeclisa(ticketId, paciente);
+        return;
+    }
+    
     const modal = bootstrap.Modal.getInstance(document.getElementById('seleccionarPacienteModal'));
     const candidatosList = document.getElementById('candidatosList');
     
@@ -163,38 +176,111 @@ function seleccionarPaciente(ticketId, paciente) {
     
     candidatosList.innerHTML = '<div class="text-center"><span class="spinner-border spinner-border-sm me-2"></span>Guardando selección...</div>';
 
+    const payload = {
+        ticket_id: ticketId,
+        paciente_id: paciente.persona_id,
+        nombre: paciente.nombre,
+        apellido: paciente.apellido,
+        protocolo: paciente.protocolo,
+        nro_doc: paciente.nro_doc,
+    };
+    if (paciente.ficha_id) {
+        payload.ficha_id = paciente.ficha_id;
+    }
+
+    enviarSeleccionPaciente(ticketId, paciente, payload, modal, candidatosList);
+}
+
+function mostrarModalProtocoloGeclisa(ticketId, paciente) {
+    const modalEl = document.getElementById('seleccionarProtocoloGeclisaModal');
+    let modal = bootstrap.Modal.getInstance(modalEl);
+    if (!modal) {
+        modal = new bootstrap.Modal(modalEl);
+    }
+    
+    // Mostrar datos del paciente
+    document.getElementById('geclisaPacienteNombre').textContent =
+        `${paciente.nombre_completo || (paciente.nombre + ' ' + paciente.apellido)}`;
+    document.getElementById('geclisaPacienteDni').textContent =
+        `DNI: ${paciente.nro_doc || 'N/A'} | Ficha: ${paciente.ficha_id || 'N/A'}`;
+    
+    const select = document.getElementById('geclisaProtocoloSelect');
+    select.innerHTML = '<option value="">-- Sin protocolo --</option>';
+    select.disabled = true;
+    
+    document.getElementById('btnConfirmarPacienteGeclisa').disabled = true;
+    
+    modal.show();
+    
+    // Cargar protocolos desde API
+    fetch('/api/protocolos/lista')
+        .then(response => response.json())
+        .then(protocolos => {
+            protocolos.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.nombre;
+                select.appendChild(opt);
+            });
+            select.disabled = false;
+            document.getElementById('btnConfirmarPacienteGeclisa').disabled = false;
+        })
+        .catch(error => {
+            console.error('Error cargando protocolos:', error);
+            select.innerHTML = '<option value="">Error al cargar protocolos</option>';
+            select.disabled = true;
+        });
+    
+    // Manejar confirmación
+    document.getElementById('btnConfirmarPacienteGeclisa').onclick = function() {
+        const protocoloId = select.value;
+        const protocoloNombre = protocoloId ? select.options[select.selectedIndex].text : '';
+        const identificador = document.getElementById('geclisaIdentificadorInput').value.trim();
+        
+        const modalPrincipal = bootstrap.Modal.getInstance(document.getElementById('seleccionarPacienteModal'));
+        const candidatosList = document.getElementById('candidatosList');
+        candidatosList.innerHTML = '<div class="text-center"><span class="spinner-border spinner-border-sm me-2"></span>Creando paciente y guardando ticket...</div>';
+        
+        const payload = {
+            ticket_id: ticketId,
+            paciente_id: null,
+            nombre: paciente.nombre,
+            apellido: paciente.apellido,
+            protocolo: protocoloNombre,
+            identificador: identificador,
+            nro_doc: paciente.nro_doc,
+            ficha_id: paciente.ficha_id,
+        };
+        
+        modal.hide();
+        
+        enviarSeleccionPaciente(ticketId, paciente, payload, modalPrincipal, candidatosList);
+    };
+}
+
+function enviarSeleccionPaciente(ticketId, paciente, payload, modal, candidatosList) {
     fetch('/seleccionar_paciente', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            ticket_id: ticketId,
-            paciente_id: paciente.persona_id,
-            nombre: paciente.nombre,
-            apellido: paciente.apellido,
-            protocolo: paciente.protocolo,
-            nro_doc: paciente.nro_doc
-        })
+        body: JSON.stringify(payload)
     })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Mostrar mensaje de éxito
                 candidatosList.innerHTML = `
                     <div class="alert alert-success mb-0">
                         <i class="bi bi-check-circle"></i> ¡Ticket guardado correctamente!
                         <p class="mb-0 mt-2 small">Paciente: <strong>${escapeHtml(paciente.nombre)} ${escapeHtml(paciente.apellido)}</strong></p>
-                        <p class="mb-0 small">Protocolo: <strong>${escapeHtml(paciente.protocolo)}</strong></p>
+                        <p class="mb-0 small">Protocolo: <strong>${escapeHtml(payload.protocolo || 'N/A')}</strong></p>
                     </div>
                 `;
                 
                 console.log('Ticket insertado exitosamente, recargando página...');
                 
                 setTimeout(() => {
-                    // Cerrar modal primero
                     if (modal) {
                         modal.hide();
                     }
-                    // Forzar recarga desde el servidor
                     window.location.reload(true);
                 }, 1500);
             } else {

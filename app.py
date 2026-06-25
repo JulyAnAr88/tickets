@@ -44,7 +44,7 @@ def init_ticket_processor():
 
 # Configuración de Superset
 # SUPERSET_URL = "http://192.168.37.182:8088"
-GUEST_TOKEN_JWT_SECRET = "3c7c2f380ee1e034889c7bb263d2f6850cde8a8a4151c0c4f8b2ef1f30e897e2"
+
 GUEST_TOKEN_JWT_ALGO = "HS256"
 
 def generate_guest_token(dashboard_id, user_info=None):
@@ -69,7 +69,8 @@ def generate_guest_token(dashboard_id, user_info=None):
         "exp": exp_timestamp
     }
     
-    token = jwt.encode(payload, GUEST_TOKEN_JWT_SECRET, algorithm=GUEST_TOKEN_JWT_ALGO)
+    guest_token_jwt = current_app.config.get("GUEST_TOKEN_JWT_SECRET", "")
+    token = jwt.encode(payload, guest_token_jwt, algorithm=GUEST_TOKEN_JWT_ALGO)
     return token
 
 # Inicializar base de datos
@@ -416,17 +417,45 @@ def buscar_candidatos():
 def seleccionar_paciente():
     """Inserta el ticket con el paciente seleccionado manualmente"""
     data = request.get_json()
-    ticket_index = data.get('ticket_id')  # Este es el índice del ticket pendiente
+    ticket_index = data.get('ticket_id')
     paciente_id = data.get('paciente_id')
+    ficha_id = data.get('ficha_id')
     nombre = data.get('nombre')
     apellido = data.get('apellido')
     protocolo = data.get('protocolo')
+    identificador = data.get('identificador')
     nro_doc = data.get('nro_doc')
     usuario = supabase_helper.get_user_display_name(supabase_helper.get_current_user())
     
-    logger.info(f"📋 Selección manual de paciente: ticket_index={ticket_index}, paciente='{nombre} {apellido}', protocolo='{protocolo}'")
+    logger.info(f"📋 Selección manual de paciente: ticket_index={ticket_index}, paciente='{nombre} {apellido}', protocolo='{protocolo}', identificador='{identificador}'")
     
     try:
+        # Si viene de Geclisa (sin persona_id pero con ficha_id), upsert a cedir primero
+        if not paciente_id and ficha_id:
+            logger.info(f"🔍 Paciente de Geclisa, creando en cedir (ficha {ficha_id})...")
+            try:
+                from cedir_common.paciente_service import upsert_paciente_en_cedir
+                from sqlalchemy.orm import Session
+
+                protocolo_id = None
+                if protocolo and ticket_processor and ticket_processor.processor:
+                    protocolo_id = ticket_processor.processor.protocolo_manager._buscar_id_protocolo(protocolo)
+
+                with Session(ticket_processor.processor.engine) as sa_session:
+                    result = upsert_paciente_en_cedir(
+                        ficha_id=ficha_id,
+                        db_session=sa_session,
+                        protocolo_id=protocolo_id,
+                        identificador=identificador,
+                    )
+                    sa_session.commit()
+
+                paciente_id = result['persona_id']
+                logger.info(f"✅ Paciente creado en cedir con persona_id={paciente_id}")
+            except Exception as e:
+                logger.error(f"Error creando paciente desde Geclisa: {e}", exc_info=True)
+                return jsonify({'success': False, 'message': f'Error creando paciente desde Geclisa: {str(e)}'}), 500
+
         # Obtener los datos extraídos del ticket desde la sesión
         tickets_pendientes = session.get('tickets_pendientes', [])
         logger.debug(f"Tickets pendientes en sesión: {len(tickets_pendientes)}")
@@ -1014,6 +1043,15 @@ def api_protocolos_suggestions():
         matches = [p for p in protocolos if query.lower() in p.lower()]
         return jsonify(matches[:10])
     
+    return jsonify([])
+
+@app.route('/api/protocolos/lista')
+@supabase_helper.login_required
+def api_protocolos_lista():
+    """API para obtener todos los protocolos (con id)"""
+    if ticket_processor and ticket_processor.processor:
+        protocolos = ticket_processor.processor.protocolo_manager.get_all_protocolos_con_id()
+        return jsonify(protocolos)
     return jsonify([])
 
 @app.route('/superset')
