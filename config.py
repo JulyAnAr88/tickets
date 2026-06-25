@@ -33,6 +33,8 @@ class Config:
     
     # Prompts Configuration
     PROMPTS_FOLDER = os.environ.get('PROMPTS_FOLDER', 'prompts')
+    
+    SUPERSET_URL = os.environ.get('SUPERSET_URL', 'http://localhost:8088')
 
     # Configuración de uploads (para imágenes)
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', '/')

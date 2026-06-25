@@ -2,6 +2,7 @@ import os
 import jwt
 from datetime import datetime, time, timedelta
 from flask import Flask, json, render_template, request, redirect, url_for, flash, jsonify, session, make_response, current_app
+from cedir_common import init_cedir
 from werkzeug.utils import secure_filename
 from config import Config
 from models import db, Ticket
@@ -29,22 +30,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Inicialización lazy del procesador de tickets (para no cargar numpy/PIL/Gemini al arranque)
-_ticket_processor = None
+# Inicialización del procesador de tickets
+ticket_processor = None
 
-def get_ticket_processor():
-    global _ticket_processor
-    if _ticket_processor is None:
-        try:
-            _ticket_processor = FlaskTicketProcessor(app)
-            print("✅ Procesador de tickets inicializado correctamente")
-        except Exception as e:
-            print(f"⚠️ Error inicializando procesador de tickets: {e}")
-            _ticket_processor = None
-    return _ticket_processor
+def init_ticket_processor():
+    global ticket_processor
+    try:
+        ticket_processor = FlaskTicketProcessor(app)
+        print("✅ Procesador de tickets inicializado correctamente")
+    except Exception as e:
+        print(f"⚠️ Error inicializando procesador de tickets: {e}")
+        ticket_processor = None
 
 # Configuración de Superset
-SUPERSET_URL = "http://192.168.37.182:8088"
+# SUPERSET_URL = "http://192.168.37.182:8088"
 GUEST_TOKEN_JWT_SECRET = "3c7c2f380ee1e034889c7bb263d2f6850cde8a8a4151c0c4f8b2ef1f30e897e2"
 GUEST_TOKEN_JWT_ALGO = "HS256"
 
@@ -74,11 +73,15 @@ def generate_guest_token(dashboard_id, user_info=None):
     return token
 
 # Inicializar base de datos
+init_cedir(app)
 db.init_app(app)
 
 # Crear carpetas necesarias
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config.get('PROCESSED_FOLDER', 'static/processed'), exist_ok=True)
+
+# Inicializar procesador de tickets
+init_ticket_processor()
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -1018,7 +1021,8 @@ def api_protocolos_suggestions():
 def superset():
     """Vista para embeber dashboard de Superset"""
     guest_token = generate_guest_token(1)
-    dashboard_url = f"{SUPERSET_URL}/superset/dashboard/1/?standalone=true&expand_filters=0&guest_token={guest_token}"
+    supabase_url = current_app.config.get('SUPABASE_URL', '')
+    dashboard_url = f"{supabase_url}/superset/dashboard/1/?standalone=true&expand_filters=0&guest_token={guest_token}"
     
     return render_template('superset_dashboard.html', 
                          dashboard_url=dashboard_url,

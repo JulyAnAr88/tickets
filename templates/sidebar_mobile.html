@@ -1,0 +1,32 @@
+<div class="offcanvas offcanvas-start sidebar-mobile" tabindex="-1" id="sidebarMenuMobile">
+    <div class="offcanvas-header">
+        <div class="sidebar-header">
+            <img src="https://cedirssf.com/wp-content/uploads/2025/09/PNGG-LOGO-blue-1-1.png"
+                 alt="CEDIR" class="sidebar-logo sidebar-logo-full">
+            <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
+        </div>
+    </div>
+    <div class="offcanvas-body">
+        <ul>
+            <li><a class="nav-link-item" href="{{ url_for('abm') }}"><i class="bi bi-images"></i> Gestión de Imágenes</a></li>
+            <li><a class="nav-link-item" href="{{ url_for('superset') }}"><i class="bi bi-graph-up"></i> Dashboard</a></li>
+        </ul>
+    </div>
+    <div class="offcanvas-footer">
+        <div class="theme-switch-wrapper">
+            <div class="theme-switch-row">
+                <i class="bi bi-sun-fill"></i>
+                <div class="theme-switch" role="button" tabindex="0">
+                    <div class="theme-switch-slider"></div>
+                </div>
+                <i class="bi bi-moon-fill"></i>
+            </div>
+        </div>
+        {% if user %}
+        <div class="sidebar-user">
+            <i class="bi bi-person-circle"></i>
+            <span>{{ user.full_name or user.email.split('@')[0] }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>

@@ -18,5 +18,12 @@ capture_output = True
 
 def on_starting(server):
     """Inicializar DB al arrancar el servidor"""
-    from app import init_db
-    init_db()
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger('gunicorn.startup')
+    try:
+        from app import init_db
+        init_db()
+        logger.info("✅ Base de datos inicializada correctamente")
+    except Exception as e:
+        logger.error(f"⚠️ Error inicializando base de datos: {e}. El servidor igualmente arrancará.")

@@ -17,6 +17,7 @@ mkdir -p "$LOG_DIR"
 . "$DIR/venv/bin/activate"
 
 # Iniciar Gunicorn
+
 exec gunicorn \
     -c "$DIR/gunicorn_config.py" \
-    app:app
+    wsgi:application

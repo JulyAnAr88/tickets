@@ -1,21 +1,12 @@
-import os
-import sys
-from pathlib import Path
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from flask import Flask
 
-# Agregar el directorio del proyecto al path
-sys.path.insert(0, str(Path(__file__).parent))
+# Import the actual app
+from app import app as flask_app
 
-from app import app, db
-from sqlalchemy import text
-import logging
+# Mount under /abm prefix
+application = DispatcherMiddleware(
+    Flask("root_app"),
+    {"/abm": flask_app}
+)
 
-logging.basicConfig(level=logging.INFO)
-
-if __name__ != '__main__':
-    # En producción (gunicorn), ejecutar setup al iniciar
-    with app.app_context():
-        esquema = app.config.get('DB_SCHEMA', 'cedir')
-        print(f"🔧 Usando esquema de base de datos: {esquema}")
-        db.session.execute(text(f"SET search_path TO {esquema}"))
-        db.create_all()
-        print("✅ Base de datos inicializada")

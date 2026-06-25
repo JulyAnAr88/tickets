@@ -1,0 +1,76 @@
+<aside class="sidebar-cedir collapsed" id="sidebar">
+    <div class="sidebar-inner">
+        <div class="sidebar-header">
+            <img src="https://cedirssf.com/wp-content/uploads/2025/09/PNGG-LOGO-blue-1-1.png"
+                 alt="CEDIR" class="sidebar-logo sidebar-logo-full">
+            <img src="https://cedirssf.com/wp-content/uploads/2025/09/cropped-PNGG-LOGO-2-e1757354924472-32x32.png"
+                 alt="C" class="sidebar-logo sidebar-logo-mini">
+            <button class="sidebar-pin-btn" id="sidebarPin" title="Fijar sidebar">
+                <i class="bi bi-pin-angle"></i>
+            </button>
+        </div>
+
+        <div class="sidebar-toggle-area">
+            <button id="sidebarToggle" class="sidebar-toggle-btn" type="button" title="Menú">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+
+        <nav class="sidebar-nav">
+            <ul>
+                <li>
+                    <a class="nav-link-item" href="{{ url_for('abm') }}">
+                        <i class="bi bi-images"></i>
+                        <span class="nav-label">Gestión de Imágenes</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-link-item" href="{{ url_for('superset') }}">
+                        <i class="bi bi-graph-up"></i>
+                        <span class="nav-label">Dashboard</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="theme-switch-wrapper">
+                <button class="theme-switch-circle" id="theme-toggle-sidebar" title="Cambiar tema">
+                    <i class="bi bi-sun-fill"></i>
+                </button>
+                <div class="theme-switch-row">
+                    <i class="bi bi-sun-fill"></i>
+                    <div class="theme-switch" role="button" tabindex="0">
+                        <div class="theme-switch-slider"></div>
+                    </div>
+                    <i class="bi bi-moon-fill"></i>
+                </div>
+            </div>
+            {% if user %}
+            <div class="sidebar-user dropdown">
+                <a href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"
+                   style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;width:100%;">
+                    <i class="bi bi-person-circle"></i>
+                    <span class="user-name">{{ user.full_name or user.email.split('@')[0] }}</span>
+                    <i class="bi bi-chevron-down chevron" style="margin-left:auto;font-size:0.7rem;"></i>
+                </a>
+                <ul class="dropdown-menu">
+                    <li><span class="dropdown-item-text small text-muted" style="color:var(--sidebar-text)!important;">{{ user.email }}</span></li>
+                    <li><span class="dropdown-item-text small text-muted" style="color:var(--sidebar-text)!important;">Rol: {{ user.role or 'Usuario' }}</span></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('profile') }}">
+                            <i class="bi bi-person-gear"></i> Mi Perfil
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                            <i class="bi bi-box-arrow-right"></i> Cerrar Sesión
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</aside>

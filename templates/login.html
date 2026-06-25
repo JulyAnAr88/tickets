@@ -57,15 +57,5 @@
     </div>
 </div>
 
-<!-- Note about HTTPS -->
-<div class="text-center mt-4">
-    <small class="text-muted">
-        <i class="bi bi-info-circle"></i> 
-        {% if request.is_secure %}
-            Conexión segura (HTTPS)
-        {% else %}
-            ⚠️ Conexión no segura. En producción se requiere HTTPS para login con Google.
-        {% endif %}
-    </small>
-</div>
+
 {% endblock %}
