@@ -890,6 +890,8 @@ class ProtocoloManager:
                                     ficha_id=geclisa_pac['ficha_id'],
                                     db_session=session,
                                     protocolo_id=protocolo_id,
+                                    user_name='sistema',
+                                    id_herramienta=1,
                                 )
                                 session.commit()
 

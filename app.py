@@ -447,6 +447,8 @@ def seleccionar_paciente():
                         db_session=sa_session,
                         protocolo_id=protocolo_id,
                         identificador=identificador,
+                        user_name=usuario,
+                        id_herramienta=1,
                     )
                     sa_session.commit()
 
