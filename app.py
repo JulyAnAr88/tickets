@@ -348,13 +348,14 @@ def abm():
     query = Ticket.query
     
     if termino:
+        like_term = f'%{termino}%'
         query = query.filter(
             db.or_(
-                Ticket.paciente.contains(termino),
-                Ticket.protocolo.contains(termino),
-                Ticket.unidad.contains(termino),
-                Ticket.usuario.contains(termino),
-                Ticket.pasaje.contains(termino)
+                Ticket.paciente.ilike(like_term),
+                Ticket.protocolo.ilike(like_term),
+                Ticket.unidad.ilike(like_term),
+                Ticket.usuario.ilike(like_term),
+                Ticket.pasaje.ilike(like_term)
             )
         )
     
@@ -729,12 +730,13 @@ def listado():
     query = Ticket.query
     
     if termino:
+        like_term = f'%{termino}%'
         query = query.filter(
             db.or_(
-                Ticket.paciente.contains(termino),
-                Ticket.protocolo.contains(termino),
-                Ticket.pasaje.contains(termino),
-                Ticket.usuario.contains(termino)
+                Ticket.paciente.ilike(like_term),
+                Ticket.protocolo.ilike(like_term),
+                Ticket.pasaje.ilike(like_term),
+                Ticket.usuario.ilike(like_term)
             )
         )
     
@@ -984,12 +986,13 @@ def buscar():
     query = Ticket.query
     
     if termino:
+        like_term = f'%{termino}%'
         query = query.filter(
             db.or_(
-                Ticket.paciente.contains(termino),
-                Ticket.protocolo.contains(termino),
-                Ticket.unidad.contains(termino),
-                Ticket.usuario.contains(termino)
+                Ticket.paciente.ilike(like_term),
+                Ticket.protocolo.ilike(like_term),
+                Ticket.unidad.ilike(like_term),
+                Ticket.usuario.ilike(like_term)
             )
         )
     

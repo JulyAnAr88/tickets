@@ -43,7 +43,7 @@ function mostrarSeleccionPaciente(ticketId, nombre, dni) {
 }
 
 function realizarBusquedaCandidatos(ticketId, nombre, dni) {
-    fetch('/buscar_candidatos', {
+    fetch('/abm/buscar_candidatos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticket_id: ticketId, nombre: nombre, dni: dni })
@@ -213,7 +213,7 @@ function mostrarModalProtocoloGeclisa(ticketId, paciente) {
     modal.show();
     
     // Cargar protocolos desde API
-    fetch('/api/protocolos/lista')
+    fetch('/abm/api/protocolos/lista')
         .then(response => response.json())
         .then(protocolos => {
             protocolos.forEach(p => {
@@ -259,7 +259,7 @@ function mostrarModalProtocoloGeclisa(ticketId, paciente) {
 }
 
 function enviarSeleccionPaciente(ticketId, paciente, payload, modal, candidatosList) {
-    fetch('/seleccionar_paciente', {
+    fetch('/abm/seleccionar_paciente', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -306,7 +306,7 @@ function eliminarPendiente(ticketId) {
     console.log('Eliminando ticket pendiente:', ticketId);
     
     // Llamar al servidor para eliminar el ticket pendiente
-    fetch('/eliminar_pendiente', {
+    fetch('/abm/eliminar_pendiente', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticket_index: ticketId })

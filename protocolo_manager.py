@@ -577,7 +577,7 @@ class ProtocoloManager:
 
                     for row in result:
                         # Calcular mejor similitud
-                        sim = max(row[5] or 0, row[6] or 0, row[7] or 0)
+                        sim = max(row[6] or 0, row[7] or 0, row[8] or 0)
                         candidates.append({
                             'persona_id': row[0],
                             'nombre': row[1],

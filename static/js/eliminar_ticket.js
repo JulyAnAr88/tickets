@@ -25,9 +25,9 @@ function eliminarTicket(ticketId, conReintegros) {
     }
     
     // Determinar qué endpoint usar
-    let url = `/eliminar/${ticketId}`;
+    let url = `/abm/eliminar/${ticketId}`;
     if (conReintegros) {
-        url = `/eliminar_con_reintegros/${ticketId}`;
+        url = `/abm/eliminar_con_reintegros/${ticketId}`;
     }
     
     // Realizar la eliminación

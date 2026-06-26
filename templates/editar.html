@@ -34,7 +34,7 @@
                                     return;
                                 }
 
-                                fetch(`/api/pacientes/suggestions?q=${encodeURIComponent(query)}`)
+                                fetch(`/abm/api/pacientes/suggestions?q=${encodeURIComponent(query)}`)
                                     .then(response => response.json())
                                     .then(data => {
                                         if (data.length > 0) {
