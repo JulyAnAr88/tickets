@@ -72,7 +72,14 @@ class TicketProcessor:
         # Inicializar gestores
         self.schema = schema
         self.prompt_manager = PromptManager(prompts_folder)
-        self.engine = sa.create_engine(db_connection_string)
+        self.engine = sa.create_engine(
+            db_connection_string,
+            pool_size=5,
+            max_overflow=5,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            connect_args={"connect_timeout": 10}
+        )
         self.protocolo_manager = ProtocoloManager(self.engine, schema)
         
         # Configuración del modelo

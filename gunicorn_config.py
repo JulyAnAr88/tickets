@@ -5,12 +5,13 @@ from pathlib import Path
 _log_dir = os.environ.get('LOG_DIR', str(Path(__file__).parent / 'logs'))
 
 bind = '0.0.0.0:5151'
-workers = 1
+workers = 4
 worker_class = 'sync'
-timeout = 300
+timeout = 180
 keepalive = 5
-max_requests = 500
-max_requests_jitter = 50
+max_requests = 1000
+max_requests_jitter = 200
+max_requests_during_restart = 10
 accesslog = f'{_log_dir}/access.log'
 errorlog = f'{_log_dir}/error.log'
 loglevel = 'info'
