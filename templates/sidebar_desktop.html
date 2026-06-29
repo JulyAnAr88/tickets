@@ -1,9 +1,9 @@
 <aside class="sidebar-cedir collapsed" id="sidebar">
     <div class="sidebar-inner">
         <div class="sidebar-header">
-            <img src="https://cedirssf.com/wp-content/uploads/2025/09/PNGG-LOGO-blue-1-1.png"
+            <img src="{{ url_for('cedir_common.static', filename='img/logo.png') }}"
                  alt="CEDIR" class="sidebar-logo sidebar-logo-full">
-            <img src="https://cedirssf.com/wp-content/uploads/2025/09/cropped-PNGG-LOGO-2-e1757354924472-32x32.png"
+            <img src="{{ url_for('cedir_common.static', filename='img/favicon.png') }}"
                  alt="C" class="sidebar-logo sidebar-logo-mini">
             <button class="sidebar-pin-btn" id="sidebarPin" title="Fijar sidebar">
                 <i class="bi bi-pin-angle"></i>

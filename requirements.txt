@@ -20,4 +20,6 @@ pytesseract>=0.3.10
 opencv-python-headless>=4.8
 tenacity>=8.2
 pyodbc>=5.0
+celery[redis]>=5.4
+redis>=5.0
 -e /home/investigacion/cedir-common

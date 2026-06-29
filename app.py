@@ -10,6 +10,7 @@ from sqlalchemy import text
 import supabase_helper
 from forms import TicketForm, BuscarForm, ImagenForm
 from ticket_processor import FlaskTicketProcessor
+from tasks import process_tickets
 import requests
 from urllib.parse import urlencode
 import logging
@@ -294,48 +295,18 @@ def abm():
         if not ticket_processor:
             flash('Procesador no disponible', 'danger')
             return redirect(url_for('abm'))
-        
-        # Procesar archivo
-        process_result = ticket_processor.process_uploaded_file(
+
+        task = process_tickets.delay(
             file_path=temp_filepath,
             usuario=nombre_usuario,
-            move_to_processed=True
+            schema=app.config.get('DB_SCHEMA', 'cedir')
         )
-        
-        if process_result is None:
-            flash('Error: El procesador retornó un resultado vacío', 'danger')
-            return redirect(url_for('abm'))
-        
-        # Mostrar mensajes según resultados
-        if process_result.get('tickets_automaticos'):
-            flash(f'✅ {len(process_result["tickets_automaticos"])} tickets insertados automáticamente', 'success')
-        
-        pendientes = process_result.get('tickets_pendientes', [])
-        if pendientes:
-            # Guardar en session para la siguiente request
-            session['tickets_pendientes'] = pendientes
-            flash(f'⚠️ Se encontraron {len(pendientes)} pacientes no identificados. Por favor selecciona la opción correcta.', 'warning')
-        
-        if process_result.get('tickets_con_error'):
-            flash(f'❌ {len(process_result["tickets_con_error"])} tickets con error de procesamiento', 'danger')
-        
-        if process_result.get('archivo_movido'):
-            flash(f'📁 Archivo archivado en processed', 'info')
-        elif process_result.get('tickets_insertados', 0) == 0 and not pendientes:
-            flash(f'❌ No se insertaron tickets. El archivo queda pendiente para revisión.', 'danger')
-        
-        # Si hay errores, guardarlos en session
-        if process_result.get('errores'):
-            session['error_procesamiento'] = {
-                'mensaje': process_result.get('message', 'Error en procesamiento'),
-                'errores': process_result.get('errores'),
-                'tickets_insertados': process_result.get('tickets_insertados', 0)
-            }
-        
-        return redirect(url_for('abm'))
+
+        session['processing_task_id'] = task.id
+        return redirect(url_for('abm', task_id=task.id))
     
     # ========== PROCESAR GET (cargar página) ==========
-    # Recuperar pendientes de session (NO hacer pop, mantenerlos hasta que se completen)
+    processing_task_id = request.args.get('task_id') or session.pop('processing_task_id', None)
     tickets_pendientes = session.get('tickets_pendientes', [])
     error_procesamiento = session.pop('error_procesamiento', None)
     
@@ -383,7 +354,8 @@ def abm():
                          fecha_hasta=fecha_hasta,
                          user=user,
                          tickets_pendientes=tickets_pendientes,
-                         error_procesamiento=error_procesamiento)
+                         error_procesamiento=error_procesamiento,
+                         processing_task_id=processing_task_id)
     
     
 @app.route('/buscar_candidatos', methods=['POST'])
@@ -684,7 +656,7 @@ def formulario():
 @app.route('/eliminar_multiples', methods=['POST'])
 @supabase_helper.login_required
 def eliminar_multiples():
-    """Eliminar múltiples tickets seleccionados"""
+    """Eliminar múltiples tickets seleccionados (con cascade manual por ticket_procesado)"""
     ticket_ids = request.form.getlist('ticket_ids')
     
     if not ticket_ids:
@@ -694,26 +666,24 @@ def eliminar_multiples():
     success_count = 0
     error_count = 0
     
-    for ticket_id in ticket_ids:
-        try:
-            ticket = Ticket.query.get(int(ticket_id))
-            if ticket:
-                db.session.delete(ticket)
-                success_count += 1
-        except Exception as e:
-            error_count += 1
-            logger.error(f"Error eliminando ticket {ticket_id}: {e}")
+    ids = [int(x) for x in ticket_ids]
     
     try:
+        schema = get_db_schema()
+        db.session.execute(
+            text(f"DELETE FROM {schema}.ticket_procesado WHERE id_ticket = ANY(:ids)"),
+            {'ids': ids}
+        )
+        db.session.execute(
+            text(f"DELETE FROM {schema}.ticket WHERE id = ANY(:ids)"),
+            {'ids': ids}
+        )
         db.session.commit()
-        
-        if success_count > 0:
-            flash(f'Se eliminaron {success_count} ticket(s) correctamente', 'success')
-        if error_count > 0:
-            flash(f'Error al eliminar {error_count} ticket(s)', 'danger')
-            
+        success_count = len(ids)
+        flash(f'Se eliminaron {success_count} ticket(s) correctamente', 'success')
     except Exception as e:
         db.session.rollback()
+        logger.error(f"Error eliminando tickets: {e}")
         flash(f'Error al eliminar los tickets: {str(e)}', 'danger')
     
     return redirect(url_for('abm'))
@@ -1187,6 +1157,61 @@ def admin_crear_usuario():
         return redirect(url_for('admin_crear_usuario'))
     
     return render_template('admin_crear_usuario.html')
+
+@app.route('/task_status/<task_id>')
+def task_status(task_id):
+    task = process_tickets.AsyncResult(task_id)
+    if task.state == 'PENDING':
+        return jsonify({'state': 'PENDING', 'status': 'Esperando para procesar...'})
+    elif task.state == 'STARTED':
+        return jsonify({'state': 'STARTED', 'status': 'Procesando...'})
+    elif task.state == 'RETRY':
+        return jsonify({'state': 'RETRY', 'status': 'Reintentando...'})
+    elif task.state == 'SUCCESS':
+        return jsonify({'state': 'SUCCESS', 'result': task.result})
+    elif task.state == 'FAILURE':
+        error_msg = str(task.info)
+        if hasattr(task.info, 'traceback'):
+            error_msg = task.info.traceback or error_msg
+        return jsonify({'state': 'FAILURE', 'error': error_msg})
+    else:
+        return jsonify({'state': task.state, 'status': str(task.info)[:200]})
+
+@app.route('/finalize_task/<task_id>', methods=['POST'])
+def finalize_task(task_id):
+    task = process_tickets.AsyncResult(task_id)
+    if task.state != 'SUCCESS':
+        return jsonify({'success': False, 'error': 'Tarea no completada'}), 400
+
+    result = task.result
+    if not result:
+        flash('Error: el procesamiento no retornó resultados', 'danger')
+        return jsonify({'success': True})
+
+    if result.get('tickets_automaticos'):
+        flash(f'✅ {len(result["tickets_automaticos"])} tickets insertados automáticamente', 'success')
+
+    pendientes = result.get('tickets_pendientes', [])
+    if pendientes:
+        session['tickets_pendientes'] = pendientes
+        flash(f'⚠️ Se encontraron {len(pendientes)} pacientes no identificados.', 'warning')
+
+    if result.get('tickets_con_error'):
+        flash(f'❌ {len(result["tickets_con_error"])} tickets con error de procesamiento', 'danger')
+
+    if result.get('archivo_movido'):
+        flash(f'📁 Archivo archivado en processed', 'info')
+    elif result.get('tickets_insertados', 0) == 0 and not pendientes:
+        flash(f'❌ No se insertaron tickets. El archivo queda pendiente para revisión.', 'danger')
+
+    if result.get('errores'):
+        session['error_procesamiento'] = {
+            'mensaje': result.get('message', 'Error en procesamiento'),
+            'errores': result.get('errores'),
+            'tickets_insertados': result.get('tickets_insertados', 0)
+        }
+
+    return jsonify({'success': True})
 
 def init_db():
     """Inicializar esquema de base de datos (search_path + tablas)"""

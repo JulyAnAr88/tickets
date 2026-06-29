@@ -9,4 +9,5 @@ error_res*
 /static/incoming/
 /static/processed/
 gestion-tickets.service
+celery_worker.service
 /logs/

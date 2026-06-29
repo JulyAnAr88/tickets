@@ -5,10 +5,9 @@
     <!-- Header con estilo CEDIR -->
     <div class="card-header text-white text-center py-4" style="background-color: var(--azul-cedir, #002856);">
         <div class="mb-2">
-            <img src="https://cedirssf.com/wp-content/uploads/2025/09/PNGG-LOGO-blue-1-1.png" 
+            <img src="{{ url_for('cedir_common.static', filename='img/logo.png') }}" 
                  alt="CEDIR" 
-                 style="height: 50px; filter: brightness(0) invert(1);"
-                 onerror="this.style.display='none'">
+                 style="height: 50px; filter: brightness(0) invert(1);">
         </div>
         <h4 class="mb-0" style="font-family: 'Montserrat', sans-serif;">
             <i class="bi bi-shield-lock"></i> Sistema de Gestión

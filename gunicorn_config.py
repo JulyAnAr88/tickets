@@ -5,9 +5,9 @@ from pathlib import Path
 _log_dir = os.environ.get('LOG_DIR', str(Path(__file__).parent / 'logs'))
 
 bind = '0.0.0.0:5151'
-workers = 4
+workers = 2
 worker_class = 'sync'
-timeout = 180
+timeout = 60
 keepalive = 5
 max_requests = 1000
 max_requests_jitter = 200
