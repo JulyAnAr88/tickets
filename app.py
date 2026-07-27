@@ -1153,12 +1153,14 @@ def superset():
     """Vista para embeber dashboard de Superset"""
     guest_token = generate_guest_token(1)
     superset_url = current_app.config.get("SUPERSET_URL", "http://localhost:8088")
-    dashboard_url = f"{superset_url}/superset/dashboard/1/?standalone=true&expand_filters=0&guest_token={guest_token}"
+    dashboard_slug = current_app.config.get("DASHBOARD_SLUG", "ticket")  # Cambiar según el dashboard que quieras mostrar
+    dashboard_url = f"{superset_url}/superset/dashboard/{dashboard_slug}/?standalone=true&expand_filters=0&guest_token={guest_token}"
     return render_template("superset_dashboard.html", 
                          dashboard_url=dashboard_url,
                          guest_token=guest_token,
                          dashboard_id=1,
                          superset_url=superset_url,
+                         dashboard_slug=dashboard_slug,
                          user=supabase_helper.get_current_user())
 
 # =====================================================

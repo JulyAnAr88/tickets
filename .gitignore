@@ -11,3 +11,4 @@ error_res*
 gestion-tickets.service
 celery_worker.service
 /logs/
+/static/context
