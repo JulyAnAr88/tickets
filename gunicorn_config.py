@@ -4,10 +4,10 @@ from pathlib import Path
 # Directorio de logs configurable (LOG_DIR en .env o default junto al config)
 _log_dir = os.environ.get('LOG_DIR', str(Path(__file__).parent / 'logs'))
 
-bind = '0.0.0.0:5151'
+bind = '0.0.0.0:5001'
 workers = 2
 worker_class = 'sync'
-timeout = 60
+timeout = 180
 keepalive = 5
 max_requests = 1000
 max_requests_jitter = 200

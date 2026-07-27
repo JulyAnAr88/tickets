@@ -95,7 +95,7 @@ class TicketProcessor:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10)
     )
-    def extract_from_image(self, image_input, page_num: int = 1, validate: bool = True) -> Dict[str, Any]:
+    def extract_from_image(self, image_input, page_num: int = 1, validate: bool = True, use_cache: bool = True) -> Dict[str, Any]:
         """Extrae datos del ticket - SIEMPRE retorna un diccionario, nunca lanza excepción"""
 
         prompt = self.prompt_manager.get_single_ticket_prompt()
@@ -127,7 +127,7 @@ class TicketProcessor:
             
             # 1°: n8n webhook (primero)
             logger.info(f"🔍 Intentando con n8n webhook (página {page_num})...")
-            data = self._extract_with_n8n(image_input, page_num)
+            data = self._extract_with_n8n(image_input, page_num, use_cache=use_cache)
             
             tiene_importe = False
             tiene_paciente = False
@@ -301,12 +301,19 @@ class TicketProcessor:
         
         return False
     
-    def _extract_with_n8n(self, image_input, page_num: int = 1) -> Dict[str, Any]:
+    def _extract_with_n8n(self, image_input, page_num: int = 1, use_cache: bool = True) -> Dict[str, Any]:
         """
         Extrae datos enviando la imagen a un webhook de n8n
+        Si use_cache=True y existe un archivo de caché, lo usa sin llamar a n8n.
         """
         logger.info(f"🔍 Enviando a n8n OCR para página {page_num}...")
-        
+
+        if use_cache:
+            cached = self._load_n8n_cache(image_input, page_num)
+            if cached:
+                logger.info(f"✅ Usando respuesta cacheada de n8n (página {page_num})")
+                return cached
+
         webhook_url = os.environ.get('N8N_OCR_WEBHOOK_URL', '')
         if not webhook_url:
             logger.warning("N8N_OCR_WEBHOOK_URL no configurada")
@@ -342,7 +349,7 @@ class TicketProcessor:
             data = {'page': str(page_num), 'format': 'binary'}
             
             logger.info(f"📤 Enviando imagen a n8n webhook: {webhook_url}")
-            response = requests.post(webhook_url, files=files, data=data, timeout=180)
+            response = requests.post(webhook_url, files=files, data=data, timeout=90)
             
             if response.status_code != 200:
                 logger.error(f"Error en n8n webhook: {response.status_code} - {response.text[:200]}")
@@ -394,6 +401,8 @@ class TicketProcessor:
                 # Normalizar paciente por si viene como array en vez de objeto
                 if 'paciente' in data and isinstance(data['paciente'], list):
                     data['paciente'] = data['paciente'][0] if data['paciente'] else {}
+                # Guardar respuesta como caché para recuperación ante fallos
+                self._save_n8n_cache(image_input, page_num, data)
                 return data
             
             return self._get_error_ticket(page_num, "No se pudieron extraer datos de la respuesta")
@@ -402,6 +411,40 @@ class TicketProcessor:
             logger.error(f"Error en n8n: {e}")
             return self._get_error_ticket(page_num, str(e))
     
+    def _cache_path_for(self, image_input, page_num: int = 1) -> Optional[str]:
+        """Devuelve la ruta del archivo de caché para una imagen"""
+        if isinstance(image_input, str):
+            base = image_input
+        else:
+            return None
+        return f"{base}.page{page_num}.n8n-cache.json"
+
+    def _save_n8n_cache(self, image_input, page_num: int, data: dict):
+        """Guarda la respuesta de n8n como archivo JSON para recuperación"""
+        cache_path = self._cache_path_for(image_input, page_num)
+        if not cache_path:
+            return
+        try:
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, default=str)
+            logger.info(f"💾 Caché n8n guardada: {cache_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ No se pudo guardar caché n8n: {e}")
+
+    def _load_n8n_cache(self, image_input, page_num: int = 1) -> Optional[Dict]:
+        """Carga respuesta cacheada de n8n si existe"""
+        cache_path = self._cache_path_for(image_input, page_num)
+        if not cache_path or not os.path.exists(cache_path):
+            return None
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            logger.info(f"📦 Usando caché n8n: {cache_path}")
+            return data
+        except Exception as e:
+            logger.warning(f"⚠️ Error leyendo caché n8n: {e}")
+            return None
+
     def _parse_n8n_text(self, text: str) -> Dict[str, Any]:
         """
         Parsea texto devuelto por n8n si no viene estructurado
@@ -797,7 +840,7 @@ class TicketProcessor:
             "es_traslado": False
         }
     
-    def extract_tickets_from_pdf(self, pdf_path: str, validate: bool = True) -> List[Dict[str, Any]]:
+    def extract_tickets_from_pdf(self, pdf_path: str, validate: bool = True, use_cache: bool = True) -> List[Dict[str, Any]]:
         """Extrae múltiples tickets de un PDF"""
         
         try:
@@ -811,7 +854,7 @@ class TicketProcessor:
         
         for page_num, img in enumerate(images, start=1):
             logger.info(f"Procesando página {page_num} de {len(images)}")
-            ticket_data = self.extract_from_image(img, page_num, validate=validate)
+            ticket_data = self.extract_from_image(img, page_num, validate=validate, use_cache=use_cache)
             
             # 🔥 Siempre agregar (puede ser None, pero extract_from_image nunca retorna None ahora)
             if ticket_data:
@@ -844,16 +887,17 @@ class TicketProcessor:
         pasaje = str(pasaje_raw) if pasaje_raw is not None else ''
         usuario_registro = usuario or 'sistema'
         es_traslado = data.get('es_traslado', False)
+        factura_referencia = data.get('factura_referencia', '')
 
         query = text(f"""
             INSERT INTO {self.schema}.ticket (
                 paciente, fecha_viaje, fecha_ticket, distancia, unidad, 
                 protocolo, importe_total, pasaje, create_time, usuario, id_paciente,
-                es_traslado
+                es_traslado, factura_referencia
             ) VALUES (
                 :paciente, :fecha_viaje, :fecha_ticket, :distancia, :unidad,
                 :protocolo, :importe_total, :pasaje, NOW(), :usuario, :id_paciente,
-                :es_traslado
+                :es_traslado, :factura_referencia
             ) RETURNING id
         """)
 
@@ -868,7 +912,8 @@ class TicketProcessor:
             'pasaje': pasaje[:150] if pasaje else None,
             'usuario': usuario_registro[:100] if usuario_registro else None,
             'id_paciente': id_paciente,
-            'es_traslado': es_traslado
+            'es_traslado': es_traslado,
+            'factura_referencia': factura_referencia[:100] if factura_referencia else None
         }
 
         compiled = query.bindparams(**params).compile(
@@ -1043,11 +1088,19 @@ class TicketProcessor:
     
     def process_multiple_tickets(self, file_path: str, usuario: str = None, 
                               move_to_processed: bool = True, 
-                              validate: bool = True) -> Dict[str, Any]:
+                              validate: bool = True,
+                              use_cache: bool = True,
+                              factura_referencia: str = None) -> Dict[str, Any]:
         """
         Procesa un archivo - solo inserta tickets con paciente encontrado
         """
         logger.info(f"Procesando archivo: {file_path} (usuario: {usuario})")
+
+        # Saltar archivos de caché
+        if file_path.endswith('.n8n-cache.json'):
+            logger.warning(f"⏭️ Ignorando archivo de caché: {file_path}")
+            result['message'] = 'Archivo de caché ignorado'
+            return result
 
         result = {
             'success': False,
@@ -1068,9 +1121,9 @@ class TicketProcessor:
         try:
             # Extraer datos
             if file_path.lower().endswith('.pdf'):
-                tickets_data = self.extract_tickets_from_pdf(file_path, validate=validate)
+                tickets_data = self.extract_tickets_from_pdf(file_path, validate=validate, use_cache=use_cache)
             else:
-                ticket_data = self.extract_from_image(file_path, validate=validate)
+                ticket_data = self.extract_from_image(file_path, validate=validate, use_cache=use_cache)
                 tickets_data = [ticket_data] if ticket_data else []
 
                     # 🔥 CAPTURAR ERRORES DE EXTRACCIÓN
@@ -1125,7 +1178,8 @@ class TicketProcessor:
                     logger.error(f"❌ Ticket {idx} tiene error: {ticket_data.get('_error_message')}")
                     continue
 
-                # Verificar si se puede insertar automáticamente
+                ticket_data['factura_referencia'] = factura_referencia or ''
+
                 insertar_auto = ticket_data.get('_insertar', False)
 
                 if insertar_auto:
@@ -1160,11 +1214,12 @@ class TicketProcessor:
             result['success'] = True  # Siempre true porque procesamos todos
             result['message'] = f"Procesados {result['tickets_procesados']} tickets: {result['tickets_insertados']} insertados automáticamente, {len(result['tickets_pendientes'])} pendientes de selección"
 
-            # No mover archivo si hay pendientes (para poder reprocesar)
-            if move_to_processed and result['tickets_insertados'] > 0 and len(result['tickets_pendientes']) == 0:
+            # Mover archivo a processed si al menos un ticket se insertó
+            if move_to_processed and result['tickets_insertados'] > 0:
                 processed_path = self.move_to_processed(file_path)
                 result['processed_path'] = processed_path
                 result['archivo_movido'] = True
+                logger.info(f"📦 Archivo movido a processed: {processed_path}")
                 
             if result['tickets_con_error']:
                 result['message'] = f"Procesados: {result['tickets_insertados']} insertados, {len(result['tickets_con_error'])} con error de API, {len(result['tickets_pendientes'])} pendientes"
@@ -1345,7 +1400,17 @@ class TicketProcessor:
         
         source.rename(destination)
         logger.info(f"Archivo movido a: {destination}")
-        
+
+        # Mover también los archivos de caché n8n asociados
+        import glob
+        for cache_file in glob.glob(f"{image_path}.page*.n8n-cache.json"):
+            try:
+                cache_dest = self.processed_folder / Path(cache_file).name
+                Path(cache_file).rename(cache_dest)
+                logger.info(f"Caché movido a: {cache_dest}")
+            except Exception as e:
+                logger.warning(f"No se pudo mover caché {cache_file}: {e}")
+
         return str(destination)
 
 
@@ -1376,7 +1441,8 @@ class FlaskTicketProcessor:
     
     def process_uploaded_file(self, file_path: str, usuario: str = None, 
                            move_to_processed: bool = True, 
-                           validate_protocolo: bool = True) -> Dict[str, Any]:
+                           validate_protocolo: bool = True,
+                           use_cache: bool = True) -> Dict[str, Any]:
         """Procesa un archivo subido - SIEMPRE retorna un diccionario"""
 
         # Resultado por defecto (en caso de error)
@@ -1400,7 +1466,7 @@ class FlaskTicketProcessor:
 
         try:
             result = self.processor.process_multiple_tickets(
-                file_path, usuario, move_to_processed, validate_protocolo
+                file_path, usuario, move_to_processed, validate_protocolo, use_cache
             )
 
             # Asegurar que el resultado es un diccionario

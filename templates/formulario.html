@@ -12,17 +12,22 @@
                     {{ form.hidden_tag() }}
                     
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             {{ form.pasaje.label(class="form-label") }}
                             {{ form.pasaje(class="form-control") }}
                         </div>
                         
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             {{ form.paciente.label(class="form-label") }}
                             {{ form.paciente(class="form-control" + (" is-invalid" if form.paciente.errors else "")) }}
                             {% for error in form.paciente.errors %}
                                 <div class="invalid-feedback">{{ error }}</div>
                             {% endfor %}
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            {{ form.factura_referencia.label(class="form-label") }}
+                            {{ form.factura_referencia(class="form-control") }}
                         </div>
                     </div>
                     

@@ -60,6 +60,8 @@ class TicketForm(FlaskForm):
     
     es_traslado = BooleanField('Es Traslado', default=False)
     
+    factura_referencia = StringField('Nro Factura Referencia', validators=[Optional(), Length(max=100)])
+    
     subtotal = DecimalField('Subtotal', places=2, validators=[Optional()])
     
     importe_total = DecimalField('Importe Total', places=2, validators=[Optional()])
@@ -73,6 +75,7 @@ class TicketForm(FlaskForm):
 
 # Formulario SOLO para carga rápida de imágenes
 class ImagenForm(FlaskForm):
+    factura_referencia = StringField('Nro Factura Referencia', validators=[Optional(), Length(max=100)])
     imagen = FileField('Cargar Imagen', validators=[
         FileAllowed(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'pdf'], 'Solo imágenes y PDF permitidos')
     ])

@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi bi-plus-circle"></i> Nuevo Ticket</h3>
+    <a href="{{ url_for('abm') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Volver a ABM
+    </a>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <h5 class="card-title"><i class="bi bi-search"></i> Buscar paciente existente</h5>
+      <div class="row g-2">
+        <div class="col-md-5">
+          <input type="text" id="searchNombre" class="form-control" placeholder="Nombre o apellido">
+        </div>
+        <div class="col-md-3">
+          <input type="text" id="searchDni" class="form-control" placeholder="DNI">
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary w-100" onclick="buscarPaciente()">
+            <i class="bi bi-search"></i> Buscar
+          </button>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-outline-secondary w-100" onclick="limpiarBusqueda()">
+            <i class="bi bi-x-circle"></i> Limpiar
+          </button>
+        </div>
+      </div>
+      <div id="resultadosBusqueda" class="mt-3" style="max-height:300px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <form method="POST" class="row g-3" id="ticketForm">
+        <div class="col-12">
+          <h5 class="border-bottom pb-2">Datos del paciente</h5>
+        </div>
+        <input type="hidden" name="id_paciente" id="id_paciente" value="">
+        <input type="hidden" name="identificador" id="identificador" value="">
+        <div class="col-md-6">
+          <label class="form-label">Nombre completo <span class="text-danger">*</span></label>
+          <input type="text" name="paciente" id="paciente" class="form-control" required
+                 placeholder="Apellido, Nombre">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">DNI</label>
+          <input type="text" name="nro_doc" id="nro_doc" class="form-control" placeholder="Número de documento">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Protocolo</label>
+          <select name="protocolo" id="protocolo" class="form-select">
+            <option value="">— Sin protocolo —</option>
+            {% for p in protocolos %}
+            <option value="{{ p.nombre }}">{{ p.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 mt-3">
+          <h5 class="border-bottom pb-2">Datos del viaje</h5>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fecha de viaje</label>
+          <input type="date" name="fecha_viaje" class="form-control"
+                 value="{{ now.strftime('%Y-%m-%d') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Distancia</label>
+          <input type="number" step="0.1" name="distancia" class="form-control"
+                 placeholder="km">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Unidad</label>
+          <select name="unidad" class="form-select">
+            <option value="km">km</option>
+            <option value="mi">mi</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Importe total ($)</label>
+          <input type="text" name="importe_total" class="form-control"
+                 placeholder="Ej: 15000,00">
+        </div>
+
+        <div class="col-12 mt-3">
+          <h5 class="border-bottom pb-2">Datos del ticket</h5>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fecha del ticket</label>
+          <input type="date" name="fecha_ticket" class="form-control"
+                 value="{{ now.strftime('%Y-%m-%d') }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Pasaje</label>
+          <input type="text" name="pasaje" class="form-control"
+                 placeholder="Número de pasaje">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Nro Factura Referencia</label>
+          <input type="text" name="factura_referencia" class="form-control" placeholder="Opcional">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="es_traslado" value="1" id="esTraslado">
+            <label class="form-check-label" for="esTraslado">Es traslado</label>
+          </div>
+        </div>
+
+        <div class="col-12 mt-4">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Guardar ticket
+          </button>
+          <a href="{{ url_for('abm') }}" class="btn btn-outline-secondary ms-2">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function escapeHtml(text) {
+  if (!text) return '';
+  return String(text).replace(/[&<>"']/g, function(m) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m];
+  });
+}
+
+function buscarPaciente() {
+  var nombre = document.getElementById('searchNombre').value.trim();
+  var dni = document.getElementById('searchDni').value.trim();
+  var container = document.getElementById('resultadosBusqueda');
+
+  if (!nombre && !dni) {
+    container.innerHTML = '<div class="alert alert-warning mb-0 py-2">Ingresá nombre o DNI para buscar</div>';
+    return;
+  }
+
+  container.innerHTML = '<div class="text-center py-2"><span class="spinner-border spinner-border-sm me-2"></span>Buscando...</div>';
+
+  fetch('/abm/nuevo_ticket/buscar_paciente', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({nombre: nombre, dni: dni})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (!data.success) {
+      container.innerHTML = '<div class="alert alert-danger mb-0 py-2">Error: ' + escapeHtml(data.error) + '</div>';
+      return;
+    }
+    var cands = data.candidates || [];
+    if (cands.length === 0) {
+      container.innerHTML = '<div class="alert alert-info mb-0 py-2"><i class="bi bi-info-circle"></i> No se encontraron pacientes. Completá los datos manualmente.</div>';
+      return;
+    }
+    var html = '<div class="list-group">';
+    for (var i = 0; i < cands.length; i++) {
+      var c = cands[i];
+      var label = c.origen === 'geclisa' ? ' <span class="badge bg-info">Geclisa</span>' : ' <span class="badge bg-success">BD</span>';
+      var protocoloLabel = c.protocolo ? escapeHtml(c.protocolo) : '—';
+      var identificadorLabel = c.identificador ? ' | ID: ' + escapeHtml(c.identificador) : '';
+      html += '<button type="button" class="list-group-item list-group-item-action py-2" data-idx="' + i + '">' +
+        '<div class="d-flex justify-content-between align-items-start">' +
+        '<div><strong>' + escapeHtml(c.nombre_completo || (c.nombre + ' ' + c.apellido)) + '</strong>' + label +
+        '<br><small class="text-muted">DNI: ' + escapeHtml(c.nro_doc || 'N/A') + ' | Protocolo: ' + protocoloLabel + identificadorLabel + '</small></div>' +
+        '<span class="badge bg-' + (c.similitud > 80 ? 'success' : c.similitud > 60 ? 'warning' : 'secondary') + ' rounded-pill">' + Math.round(c.similitud) + '%</span>' +
+        '</div></button>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+
+    window._candidatos = cands;
+    container.querySelectorAll('.list-group-item').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var idx = parseInt(this.dataset.idx);
+        seleccionarPaciente(window._candidatos[idx]);
+      });
+    });
+  })
+  .catch(function(err) {
+    container.innerHTML = '<div class="alert alert-danger mb-0 py-2">Error de conexión: ' + escapeHtml(err.message) + '</div>';
+  });
+}
+
+function seleccionarPaciente(c) {
+  document.getElementById('id_paciente').value = c.persona_id || '';
+  document.getElementById('paciente').value = c.nombre_completo || (c.nombre + ' ' + c.apellido) || '';
+  document.getElementById('nro_doc').value = c.nro_doc || '';
+  document.getElementById('identificador').value = c.identificador || '';
+
+  if (c.protocolo) {
+    var sel = document.getElementById('protocolo');
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === c.protocolo) {
+        sel.selectedIndex = i;
+        break;
+      }
+    }
+  }
+
+  document.getElementById('resultadosBusqueda').innerHTML =
+    '<div class="alert alert-success mb-0 py-2"><i class="bi bi-check-circle"></i> Seleccionado: <strong>' +
+    escapeHtml(c.nombre_completo || (c.nombre + ' ' + c.apellido)) + '</strong></div>';
+
+  document.getElementById('resultadosBusqueda').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function limpiarBusqueda() {
+  document.getElementById('searchNombre').value = '';
+  document.getElementById('searchDni').value = '';
+  document.getElementById('resultadosBusqueda').innerHTML = '';
+  document.getElementById('id_paciente').value = '';
+  document.getElementById('paciente').value = '';
+  document.getElementById('nro_doc').value = '';
+  document.getElementById('identificador').value = '';
+  document.getElementById('protocolo').selectedIndex = 0;
+  document.getElementById('searchNombre').focus();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('searchNombre').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); buscarPaciente(); }
+  });
+  document.getElementById('searchDni').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); buscarPaciente(); }
+  });
+});
+</script>
+{% endblock %}

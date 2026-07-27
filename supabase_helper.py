@@ -1,7 +1,7 @@
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import session, request, redirect, url_for, flash
+from flask import session, request, redirect, url_for, flash, jsonify
 from config import Config
 import os
 
@@ -32,10 +32,14 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if supabase is None:
+            if request.is_json or request.accept_mimetypes.accept_json:
+                return jsonify({'success': False, 'error': 'Config error: Supabase not connected'}), 503
             flash('Error de configuración: Supabase no está conectado', 'danger')
             return redirect(url_for('login'))
         
         if 'user' not in session:
+            if request.is_json or request.accept_mimetypes.accept_json:
+                return jsonify({'success': False, 'error': 'Sesión expirada', 'redirect': url_for('login')}), 401
             flash('Por favor, inicia sesión para acceder a esta página', 'warning')
             return redirect(url_for('login'))
         
@@ -44,6 +48,8 @@ def login_required(f):
             # Rutas que están exentas de la redirección
             exempt_endpoints = ['cambiar_password_obligatorio', 'logout', 'auth_logout', 'login', 'static']
             if request.endpoint not in exempt_endpoints:
+                if request.is_json or request.accept_mimetypes.accept_json:
+                    return jsonify({'success': False, 'error': 'Debe cambiar su contraseña'}), 403
                 flash('Debes cambiar tu contraseña antes de continuar', 'warning')
                 return redirect(url_for('cambiar_password_obligatorio'))
         

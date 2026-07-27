@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Exponer puerto
-EXPOSE 5151
+EXPOSE 5001
 
 # Comando de inicio
-CMD ["gunicorn", "app:app", "-b", "0.0.0.0:5151"]
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:5001"]

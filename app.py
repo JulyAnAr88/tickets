@@ -103,7 +103,7 @@ def inject_now():
 
 @app.before_request
 def require_login():
-    public_routes = ['login', 'static', 'logout', 'auth_logout']
+    public_routes = ['login', 'static', 'logout', 'auth_logout', 'cedir_auth.forgot_password', 'cedir_common.static']
     if request.endpoint in public_routes:
         return None
     if 'user' not in session:
@@ -112,7 +112,7 @@ def require_login():
 
 # ============ RUTAS DE AUTENTICACIÓN ============
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/abm/login', methods=['GET', 'POST'])
 def login():
     """Página de inicio de sesión"""
     if 'user' in session:
@@ -135,7 +135,7 @@ def login():
     
     return render_template('login.html')
 
-@app.route('/register', methods=['GET', 'POST'])
+@app.route('/abm/register', methods=['GET', 'POST'])
 @supabase_helper.login_required
 def register():
     """Página de registro de usuario"""
@@ -154,14 +154,14 @@ def register():
     
     return render_template('register.html')
 
-@app.route('/logout')
+@app.route('/abm/logout')
 def logout():
     """Cerrar sesión"""
     result = supabase_helper.sign_out_user()
     flash(result['message'], 'success')
     return redirect(url_for('login'))
 
-@app.route('/profile', methods=['GET', 'POST'])
+@app.route('/abm/profile', methods=['GET', 'POST'])
 @supabase_helper.login_required
 def profile():
     """Perfil de usuario con opción de subir avatar"""
@@ -191,7 +191,7 @@ def profile():
     
     return render_template('profile.html', user=user)
 
-@app.route('/profile/cambiar_password', methods=['POST'])
+@app.route('/abm/profile/cambiar_password', methods=['POST'])
 @supabase_helper.login_required
 def cambiar_password():
     """Cambiar contraseña del usuario"""
@@ -217,7 +217,7 @@ def cambiar_password():
     
     return redirect(url_for('profile'))
 
-@app.route('/profile/cambiar_password_obligatorio', methods=['GET', 'POST'])
+@app.route('/abm/profile/cambiar_password_obligatorio', methods=['GET', 'POST'])
 @supabase_helper.login_required
 def cambiar_password_obligatorio():
     """Cambio de contraseña obligatorio (primer inicio de sesión)"""
@@ -296,10 +296,12 @@ def abm():
             flash('Procesador no disponible', 'danger')
             return redirect(url_for('abm'))
 
+        factura_referencia = form.factura_referencia.data or ''
         task = process_tickets.delay(
             file_path=temp_filepath,
             usuario=nombre_usuario,
-            schema=app.config.get('DB_SCHEMA', 'cedir')
+            schema=app.config.get('DB_SCHEMA', 'cedir'),
+            factura_referencia=factura_referencia
         )
 
         session['processing_task_id'] = task.id
@@ -319,16 +321,18 @@ def abm():
     query = Ticket.query
     
     if termino:
-        like_term = f'%{termino}%'
-        query = query.filter(
-            db.or_(
-                Ticket.paciente.ilike(like_term),
-                Ticket.protocolo.ilike(like_term),
-                Ticket.unidad.ilike(like_term),
-                Ticket.usuario.ilike(like_term),
-                Ticket.pasaje.ilike(like_term)
+        words = termino.strip().split()
+        for word in words:
+            like_word = f'%{word}%'
+            query = query.filter(
+                db.or_(
+                    Ticket.paciente.ilike(like_word),
+                    Ticket.protocolo.ilike(like_word),
+                    Ticket.unidad.ilike(like_word),
+                    Ticket.usuario.ilike(like_word),
+                    Ticket.pasaje.ilike(like_word)
+                )
             )
-        )
     
     if fecha_desde:
         try:
@@ -358,7 +362,7 @@ def abm():
                          processing_task_id=processing_task_id)
     
     
-@app.route('/buscar_candidatos', methods=['POST'])
+@app.route('/abm/buscar_candidatos', methods=['POST'])
 @supabase_helper.login_required
 def buscar_candidatos():
     """Busca candidatos similares para un ticket no encontrado"""
@@ -371,9 +375,11 @@ def buscar_candidatos():
     
     if not ticket_processor or not ticket_processor.processor:
         return jsonify({'error': 'Procesador no disponible', 'candidates': []}), 500
-    
+
     try:
-        candidates = ticket_processor.processor.protocolo_manager.buscar_candidatos_similares(
+        from cedir_common.paciente_service import buscar_candidatos_similares
+        candidates = buscar_candidatos_similares(
+            ticket_processor.processor.engine,
             nombre_busqueda=nombre,
             dni_busqueda=dni,
             limit=10
@@ -385,7 +391,7 @@ def buscar_candidatos():
         logger.error(f"Error buscando candidatos: {str(e)}", exc_info=True)
         return jsonify({'error': str(e), 'candidates': [], 'success': False}), 500
 
-@app.route('/seleccionar_paciente', methods=['POST'])
+@app.route('/abm/seleccionar_paciente', methods=['POST'])
 @supabase_helper.login_required
 def seleccionar_paciente():
     """Inserta el ticket con el paciente seleccionado manualmente"""
@@ -538,7 +544,7 @@ def seleccionar_paciente():
         logger.error(f"❌ Error en seleccionar_paciente: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'message': f'Error interno: {str(e)}'}), 500
 
-@app.route('/eliminar_pendiente', methods=['POST'])
+@app.route('/abm/eliminar_pendiente', methods=['POST'])
 @supabase_helper.login_required
 def eliminar_pendiente():
     """Elimina un ticket pendiente de la sesión sin guardarlo en la base de datos"""
@@ -579,7 +585,7 @@ def eliminar_pendiente():
         logger.error(f"❌ Error en eliminar_pendiente: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'message': f'Error interno: {str(e)}'}), 500
 
-@app.route('/limpiar_uploads_huérfanos')
+@app.route('/abm/limpiar_uploads_huérfanos')
 @supabase_helper.login_required
 def limpiar_uploads_huérfanos():
     """Limpia archivos en uploads que llevan más de 7 días sin procesar"""
@@ -598,7 +604,113 @@ def limpiar_uploads_huérfanos():
     flash(f'Se eliminaron {eliminados} archivos huérfanos', 'info')
     return redirect(url_for('abm'))
 
-@app.route('/debug/user')
+@app.route('/abm/recuperar', methods=['GET', 'POST'])
+@supabase_helper.login_required
+def recuperar_archivos():
+    """Página para recuperar archivos huérfanos con caché de n8n"""
+    import os, json, glob
+    from datetime import datetime as dt
+    user = supabase_helper.get_current_user()
+    upload_folder = app.config['UPLOAD_FOLDER']
+    processed_folder = app.config.get('PROCESSED_FOLDER', 'static/processed')
+
+    fecha_desde = request.args.get('fecha_desde', '')
+    fecha_hasta = request.args.get('fecha_hasta', '')
+    solo_con_cache = request.args.get('solo_cache', '0') == '1'
+
+    if request.method == 'POST':
+        archivos = request.form.getlist('archivos')
+        usar_cache = request.form.get('usar_cache', '1') == '1'
+        count_ok = 0
+        count_err = 0
+        todos_pendientes = []
+        for filepath in archivos:
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                nombre_usuario = supabase_helper.get_user_display_name(user)
+                result = ticket_processor.process_uploaded_file(
+                    file_path=filepath,
+                    usuario=nombre_usuario,
+                    move_to_processed=True,
+                    validate_protocolo=True,
+                    use_cache=usar_cache
+                )
+                if result and result.get('success', False):
+                    count_ok += 1
+                else:
+                    count_err += 1
+                # Acumular tickets pendientes para mostrarlos en ABM
+                pendientes = result.get('tickets_pendientes', [])
+                if pendientes:
+                    todos_pendientes.extend(pendientes)
+            except Exception as e:
+                logger.error(f"Error reprocesando {filepath}: {e}")
+                count_err += 1
+
+        if todos_pendientes:
+            session['tickets_pendientes'] = todos_pendientes
+            session.modified = True
+            flash(f'⚠️ {len(todos_pendientes)} pacientes no identificados requieren selección manual', 'warning')
+            return redirect(url_for('abm'))
+
+        flash(f'Reprocesados: {count_ok} ok, {count_err} errores', 'success' if count_err == 0 else 'warning')
+        return redirect(url_for('recuperar_archivos'))
+
+    # Listar archivos (incoming + processed)
+    archivos_info = []
+    carpetas = [
+        ('Incoming', upload_folder),
+        ('Procesados', processed_folder),
+    ]
+    for origen, folder in carpetas:
+        if not os.path.isdir(folder):
+            continue
+        for fname in sorted(os.listdir(folder), reverse=True):
+            filepath = os.path.join(folder, fname)
+            if not os.path.isfile(filepath) or fname.startswith('.') or fname.endswith('.n8n-cache.json'):
+                continue
+            mtime = dt.fromtimestamp(os.path.getmtime(filepath))
+            # Filtro por fecha
+            if fecha_desde:
+                try:
+                    desde = dt.strptime(fecha_desde, '%Y-%m-%d')
+                    if mtime < desde:
+                        continue
+                except:
+                    pass
+            if fecha_hasta:
+                try:
+                    hasta = dt.strptime(fecha_hasta, '%Y-%m-%d').replace(hour=23, minute=59)
+                    if mtime > hasta:
+                        continue
+                except:
+                    pass
+
+            # Buscar cachés de n8n asociados (en la misma carpeta que el archivo)
+            caches = sorted(glob.glob(f"{filepath}.page*.n8n-cache.json"))
+            tiene_cache = len(caches) > 0
+            if solo_con_cache and not tiene_cache:
+                continue
+
+            archivos_info.append({
+                'nombre': fname,
+                'ruta': filepath,
+                'modificado': mtime,
+                'tiene_cache': tiene_cache,
+                'cant_caches': len(caches),
+                'origen': origen,
+            })
+
+    return render_template('recuperar.html',
+                         archivos=archivos_info,
+                         fecha_desde=fecha_desde,
+                         fecha_hasta=fecha_hasta,
+                         solo_con_cache=solo_con_cache,
+                         upload_folder=upload_folder,
+                         user=user)
+
+@app.route('/abm/debug/user')
 @supabase_helper.login_required
 def debug_user():
     user = supabase_helper.get_current_user()
@@ -609,7 +721,7 @@ def debug_user():
         'email': user.get('email')
     })
 
-@app.route('/formulario', methods=['GET', 'POST'])
+@app.route('/abm/formulario', methods=['GET', 'POST'])
 @supabase_helper.login_required
 def formulario():
     form = TicketForm()
@@ -639,7 +751,8 @@ def formulario():
             importe_total=form.importe_total.data,
             usuario=form.usuario.data,
             create_time=datetime.utcnow(),
-            es_traslado=form.es_traslado.data
+            es_traslado=form.es_traslado.data,
+            factura_referencia=form.factura_referencia.data
         )
         
         try:
@@ -653,7 +766,7 @@ def formulario():
     
     return render_template('formulario.html', form=form)
 
-@app.route('/eliminar_multiples', methods=['POST'])
+@app.route('/abm/eliminar_multiples', methods=['POST'])
 @supabase_helper.login_required
 def eliminar_multiples():
     """Eliminar múltiples tickets seleccionados (con cascade manual por ticket_procesado)"""
@@ -688,7 +801,7 @@ def eliminar_multiples():
     
     return redirect(url_for('abm'))
 
-@app.route('/listado')
+@app.route('/abm/listado')
 @supabase_helper.login_required
 def listado():
     """Listado completo de tickets"""
@@ -700,15 +813,17 @@ def listado():
     query = Ticket.query
     
     if termino:
-        like_term = f'%{termino}%'
-        query = query.filter(
-            db.or_(
-                Ticket.paciente.ilike(like_term),
-                Ticket.protocolo.ilike(like_term),
-                Ticket.pasaje.ilike(like_term),
-                Ticket.usuario.ilike(like_term)
+        words = termino.strip().split()
+        for word in words:
+            like_word = f'%{word}%'
+            query = query.filter(
+                db.or_(
+                    Ticket.paciente.ilike(like_word),
+                    Ticket.protocolo.ilike(like_word),
+                    Ticket.pasaje.ilike(like_word),
+                    Ticket.usuario.ilike(like_word)
+                )
             )
-        )
     
     if fecha_desde:
         try:
@@ -730,7 +845,7 @@ def listado():
                          termino=termino, fecha_desde=fecha_desde, 
                          fecha_hasta=fecha_hasta, user=user)
 
-@app.route('/editar/<int:id>', methods=['GET', 'POST'])
+@app.route('/abm/editar/<int:id>', methods=['GET', 'POST'])
 @supabase_helper.login_required
 def editar(id):
     """Editar ticket - solo accesible con login"""
@@ -757,6 +872,7 @@ def editar(id):
         ticket.cantidad_noches = form.cantidad_noches.data or 0
         ticket.preseleccion_no_completo = form.preseleccion_no_completo.data
         ticket.es_traslado = form.es_traslado.data
+        ticket.factura_referencia = form.factura_referencia.data
         ticket.subtotal = form.subtotal.data
         ticket.importe_total = form.importe_total.data
         nombre_usuario = user.get('full_name') or \
@@ -795,7 +911,7 @@ def editar(id):
     return render_template('editar.html', form=form, ticket=ticket, 
                          user=user, protocolos_sugeridos=protocolos_sugeridos)
 
-@app.route('/eliminar/<int:id>')
+@app.route('/abm/eliminar/<int:id>')
 @supabase_helper.login_required
 def eliminar(id):
     """Eliminar ticket con sus reintegros asociados"""
@@ -819,7 +935,7 @@ def eliminar(id):
     
     return redirect(url_for('abm'))
 
-@app.route('/eliminar_con_reintegros/<int:id>', methods=['POST'])
+@app.route('/abm/eliminar_con_reintegros/<int:id>', methods=['POST'])
 @supabase_helper.login_required
 def eliminar_con_reintegros(id):
     """Eliminar ticket Y sus reintegros asociados (borrado en cascada)"""
@@ -874,7 +990,7 @@ def get_db_schema():
     """Obtiene el esquema de base de datos actual desde la configuración"""
     return current_app.config.get('DB_SCHEMA', 'cedir')
 
-@app.route('/procesar/<int:id>', methods=['POST'])
+@app.route('/abm/procesar/<int:id>', methods=['POST'])
 @supabase_helper.login_required
 def procesar_ticket(id):
     """Procesar un ticket existente (reprocesar imagen con IA)"""
@@ -947,7 +1063,7 @@ def procesar_ticket(id):
     
     return redirect(url_for('abm'))
 
-@app.route('/buscar')
+@app.route('/abm/buscar')
 def buscar():
     termino = request.args.get('termino', '')
     fecha_desde = request.args.get('fecha_desde', '')
@@ -956,15 +1072,17 @@ def buscar():
     query = Ticket.query
     
     if termino:
-        like_term = f'%{termino}%'
-        query = query.filter(
-            db.or_(
-                Ticket.paciente.ilike(like_term),
-                Ticket.protocolo.ilike(like_term),
-                Ticket.unidad.ilike(like_term),
-                Ticket.usuario.ilike(like_term)
+        words = termino.strip().split()
+        for word in words:
+            like_word = f'%{word}%'
+            query = query.filter(
+                db.or_(
+                    Ticket.paciente.ilike(like_word),
+                    Ticket.protocolo.ilike(like_word),
+                    Ticket.unidad.ilike(like_word),
+                    Ticket.usuario.ilike(like_word)
+                )
             )
-        )
     
     if fecha_desde:
         try:
@@ -984,13 +1102,13 @@ def buscar():
     return render_template('listado.html', tickets=tickets, termino=termino, 
                          fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
 
-@app.route('/api/tickets')
+@app.route('/abm/api/tickets')
 @supabase_helper.login_required
 def api_tickets():
     tickets = Ticket.query.all()
     return jsonify([ticket.to_dict() for ticket in tickets])
 
-@app.route('/api/pacientes/suggestions')
+@app.route('/abm/api/pacientes/suggestions')
 @supabase_helper.login_required
 def api_pacientes_suggestions():
     """API para sugerencias de pacientes (autocompletado)"""
@@ -1004,7 +1122,7 @@ def api_pacientes_suggestions():
     
     return jsonify([])
 
-@app.route('/api/protocolos/suggestions')
+@app.route('/abm/api/protocolos/suggestions')
 @supabase_helper.login_required
 def api_protocolos_suggestions():
     """API para sugerencias de protocolos (autocompletado)"""
@@ -1020,7 +1138,7 @@ def api_protocolos_suggestions():
     
     return jsonify([])
 
-@app.route('/api/protocolos/lista')
+@app.route('/abm/api/protocolos/lista')
 @supabase_helper.login_required
 def api_protocolos_lista():
     """API para obtener todos los protocolos (con id)"""
@@ -1029,13 +1147,13 @@ def api_protocolos_lista():
         return jsonify(protocolos)
     return jsonify([])
 
-@app.route('/superset')
+@app.route('/abm/superset')
 @supabase_helper.login_required
 def superset():
     """Vista para embeber dashboard de Superset"""
     guest_token = generate_guest_token(1)
     superset_url = current_app.config.get("SUPERSET_URL", "http://localhost:8088")
-    dashboard_url = f"{superset_url}/dashboard/1/?standalone=true&expand_filters=0&guest_token={guest_token}"
+    dashboard_url = f"{superset_url}/superset/dashboard/1/?standalone=true&expand_filters=0&guest_token={guest_token}"
     return render_template("superset_dashboard.html", 
                          dashboard_url=dashboard_url,
                          guest_token=guest_token,
@@ -1047,7 +1165,7 @@ def superset():
 # Rutas de Autenticación con Google OAuth
 # =====================================================
 
-@app.route('/auth/google')
+@app.route('/abm/auth/google')
 def auth_google():
     """Redirigir a Google para autenticación OAuth"""
     try:
@@ -1081,7 +1199,7 @@ def auth_google():
         flash(f'Error al iniciar sesión con Google: {str(e)}', 'danger')
         return redirect(url_for('login'))
 
-@app.route('/auth/google/callback')
+@app.route('/abm/auth/google/callback')
 def auth_google_callback():
     """Callback después de autenticación con Google"""
     try:
@@ -1106,7 +1224,7 @@ def auth_google_callback():
         flash(f'Error en autenticación: {str(e)}', 'danger')
         return redirect(url_for('login'))
 
-@app.route('/auth/logout')
+@app.route('/abm/auth/logout')
 @supabase_helper.login_required
 def auth_logout():
     """Cerrar sesión"""
@@ -1119,7 +1237,7 @@ def auth_logout():
     
     return redirect(url_for('login'))
 
-@app.route('/admin/crear_usuario', methods=['GET', 'POST'])
+@app.route('/abm/admin/crear_usuario', methods=['GET', 'POST'])
 @supabase_helper.login_required
 def admin_crear_usuario():
     """Crear usuarios operativos - solo para superusuario"""
@@ -1158,7 +1276,7 @@ def admin_crear_usuario():
     
     return render_template('admin_crear_usuario.html')
 
-@app.route('/task_status/<task_id>')
+@app.route('/abm/task_status/<task_id>')
 def task_status(task_id):
     task = process_tickets.AsyncResult(task_id)
     if task.state == 'PENDING':
@@ -1177,7 +1295,7 @@ def task_status(task_id):
     else:
         return jsonify({'state': task.state, 'status': str(task.info)[:200]})
 
-@app.route('/finalize_task/<task_id>', methods=['POST'])
+@app.route('/abm/finalize_task/<task_id>', methods=['POST'])
 def finalize_task(task_id):
     task = process_tickets.AsyncResult(task_id)
     if task.state != 'SUCCESS':
@@ -1213,6 +1331,103 @@ def finalize_task(task_id):
 
     return jsonify({'success': True})
 
+@app.route('/abm/nuevo_ticket', methods=['GET', 'POST'])
+@supabase_helper.login_required
+def nuevo_ticket():
+    """Crea un ticket manualmente sin escaneo"""
+    from datetime import datetime
+    user = supabase_helper.get_current_user()
+    usuario = supabase_helper.get_user_display_name(user)
+
+    if request.method == 'POST':
+        try:
+            data = {
+                'paciente': {
+                    'nombre': request.form.get('paciente', '').strip(),
+                    'persona_id': request.form.get('id_paciente') or None,
+                    'protocolo': request.form.get('protocolo', '').strip(),
+                },
+                'viaje': {
+                    'fecha_viaje': request.form.get('fecha_viaje', '').strip(),
+                    'distancia': request.form.get('distancia') or None,
+                    'unidad': request.form.get('unidad', 'km').strip(),
+                },
+                'totales': {
+                    'importe_total': request.form.get('importe_total', '').strip(),
+                },
+                'fecha_ticket': request.form.get('fecha_ticket', '').strip(),
+                'pasaje': request.form.get('pasaje', '').strip(),
+                'es_traslado': request.form.get('es_traslado') == '1',
+                'factura_referencia': request.form.get('factura_referencia', '').strip(),
+            }
+
+            if not data['paciente']['nombre']:
+                flash('El nombre del paciente es obligatorio', 'danger')
+                return render_template('nuevo_ticket.html', now=datetime.now())
+
+            if not ticket_processor or not ticket_processor.processor:
+                flash('Procesador no disponible', 'danger')
+                return render_template('nuevo_ticket.html', now=datetime.now())
+
+            sql = ticket_processor.processor.generate_insert_sql(data, usuario)
+            result = ticket_processor.processor.insert_ticket(sql, '')
+
+            if result['success']:
+                flash(f'✅ Ticket creado correctamente para {data["paciente"]["nombre"]}', 'success')
+                return redirect(url_for('abm'))
+            else:
+                flash(f'Error al insertar: {result.get("message", "Error desconocido")}', 'danger')
+        except Exception as e:
+            logger.error(f"Error creando ticket manual: {e}", exc_info=True)
+            flash(f'Error: {str(e)}', 'danger')
+
+    protocolos = []
+    if ticket_processor and ticket_processor.processor:
+        try:
+            protocolos = ticket_processor.processor.protocolo_manager.get_all_protocolos_con_id()
+        except Exception as e:
+            logger.error(f"Error cargando protocolos: {e}")
+
+    return render_template('nuevo_ticket.html', now=datetime.now(), protocolos=protocolos)
+
+@app.route('/abm/nuevo_ticket/buscar_paciente', methods=['POST'])
+@supabase_helper.login_required
+def nuevo_ticket_buscar_paciente():
+    """Busca pacientes para el formulario nuevo ticket: PG primero, Geclisa fallback"""
+    data = request.get_json()
+    nombre = (data.get('nombre') or '').strip()
+    dni = (data.get('dni') or '').strip()
+
+    if not nombre and not dni:
+        return jsonify({'candidates': [], 'success': True})
+
+    candidates = []
+    try:
+        from cedir_common.paciente_service import buscar_candidatos_similares, limpiar_dni
+        engine = ticket_processor.processor.engine
+
+        candidates = buscar_candidatos_similares(engine, nombre_busqueda=nombre, dni_busqueda=dni, limit=8)
+
+        # Get identificador for PostgreSQL candidates
+        if candidates:
+            with engine.connect() as conn:
+                for c in candidates:
+                    if c.get('persona_id'):
+                        row = conn.execute(text(
+                            "SELECT identificador FROM cedir.paciente_protocolo "
+                            "WHERE id_paciente = (SELECT id FROM cedir.paciente WHERE id_persona = :pid LIMIT 1) "
+                            "LIMIT 1"
+                        ), {'pid': c['persona_id']}).fetchone()
+                        c['identificador'] = row[0] if row else ''
+                    else:
+                        c['identificador'] = ''
+
+        return jsonify({'candidates': candidates, 'success': True})
+    except Exception as e:
+        logger.error(f"Error buscando paciente: {e}", exc_info=True)
+        return jsonify({'candidates': candidates, 'success': False, 'error': str(e)}), 500
+
+
 def init_db():
     """Inicializar esquema de base de datos (search_path + tablas)"""
     with app.app_context():
@@ -1223,4 +1438,4 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, host='0.0.0.0', port=5151)
+    app.run(debug=True, host='0.0.0.0', port=5001)

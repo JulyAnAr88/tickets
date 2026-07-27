@@ -40,7 +40,7 @@ python3 app.py
 
 ### 3. Abrir en navegador
 ```
-http://localhost:5151
+http://localhost:5001
 ```
 
 ### 4. Probar el flujo

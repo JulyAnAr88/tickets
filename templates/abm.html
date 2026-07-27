@@ -144,7 +144,11 @@
                     {{ form.hidden_tag() }}
 
                     <div class="row">
-                        <div class="col-md-10 mb-3">
+                        <div class="col-md-5 mb-3">
+                            {{ form.factura_referencia.label(class="form-label") }}
+                            {{ form.factura_referencia(class="form-control", placeholder="Opcional") }}
+                        </div>
+                        <div class="col-md-5 mb-3">
                             {{ form.imagen.label(class="form-label") }}
                             <input type="file" class="form-control" id="fileInput" name="imagen">
                             <small class="text-muted">Formatos permitidos: JPG, PNG, GIF, BMP, PDF</small>
@@ -266,8 +270,16 @@
     <!-- Listado de tickets -->
     <div class="col-md-12">
         <div class="card">
-            <div class="card-header">
-                <h3>Listado de Tickets</h3>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="mb-0">Listado de Tickets</h3>
+                <div>
+                    <a href="{{ url_for('nuevo_ticket') }}" class="btn btn-sm btn-success me-1">
+                        <i class="bi bi-plus-circle"></i> Nuevo Ticket
+                    </a>
+                    <a href="{{ url_for('recuperar_archivos') }}" class="btn btn-sm btn-outline-warning">
+                        <i class="bi bi-archive"></i> Recuperar archivos
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 <!-- Formulario de búsqueda -->
@@ -324,7 +336,7 @@
                                     <th>Protocolo</th>
                                     <th>Fecha Ticket</th>
                                     <th>Importe Total</th>
-                                    <th>Usuario</th>
+                                    <th>Factura Ref.</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -341,7 +353,7 @@
                                     </td>
                                     <td>$ {{ '{:,.2f}'.format(ticket.importe_total) if ticket.importe_total else '0.00'
                                         }}</td>
-                                    <td>{{ ticket.usuario if ticket.usuario else '-' }}</td>
+                                    <td>{{ ticket.factura_referencia if ticket.factura_referencia else '-' }}</td>
                                     <td>
                                         <a href="{{ url_for('editar', id=ticket.id) }}" class="btn btn-sm btn-warning">
                                             <i class="bi bi-pencil"></i> 

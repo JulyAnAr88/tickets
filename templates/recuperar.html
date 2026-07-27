@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Recuperación de Archivos</h3>
+    <a href="{{ url_for('abm') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Volver a ABM
+    </a>
+  </div>
+
+  <div class="alert alert-info py-2 small">
+    <i class="bi bi-info-circle"></i>
+    Muestra los archivos en <code>{{ upload_folder }}</code> que estén pendientes de procesar.
+    Si un ticket se procesó correctamente, ya fue movido a <code>/home/files/processed</code> y no aparece aquí.
+    Marcá los archivos y presioná <strong>Reprocesar</strong> para reenviarlos.
+    Si tienen caché de n8n (columna <strong>Caché n8n</strong> con badge verde), podés reprocesarlos sin llamar a n8n de nuevo.
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <form method="GET" class="row g-2 align-items-end">
+        <div class="col-auto">
+          <label class="form-label small">Fecha desde</label>
+          <input type="date" name="fecha_desde" class="form-control form-control-sm"
+                 value="{{ fecha_desde }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label small">Fecha hasta</label>
+          <input type="date" name="fecha_hasta" class="form-control form-control-sm"
+                 value="{{ fecha_hasta }}">
+        </div>
+        <div class="col-auto">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="solo_cache" value="1"
+                   id="soloCache" {{ 'checked' if solo_con_cache }}>
+            <label class="form-check-label small" for="soloCache">
+              Solo con caché n8n
+            </label>
+          </div>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-search"></i> Filtrar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <form method="POST" id="recuperarForm">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>{{ archivos|length }} archivo(s) en {{ upload_folder }}</span>
+        <div>
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleAll()">
+            <i class="bi bi-check-all"></i> Seleccionar todos
+          </button>
+          <button type="submit" class="btn btn-sm btn-success" id="btnReprocesar" disabled>
+            <i class="bi bi-play-fill"></i> Reprocesar seleccionados
+          </button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        {% if archivos %}
+        <div class="table-responsive">
+          <table class="table table-hover table-sm mb-0">
+            <thead class="table-light">
+              <tr>
+                <th style="width:40px"></th>
+                <th>Archivo</th>
+                <th style="width:90px">Origen</th>
+                <th style="width:140px">Modificado</th>
+                <th style="width:100px">Caché n8n</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in archivos %}
+              <tr>
+                <td>
+                  <input type="checkbox" name="archivos" value="{{ a.ruta }}"
+                         class="form-check-input archivo-check">
+                </td>
+                <td>
+                  <span class="small">{{ a.nombre }}</span>
+                </td>
+                <td>
+                  {% if a.origen == 'Procesados' %}
+                  <span class="badge bg-info">Procesados</span>
+                  {% else %}
+                  <span class="badge bg-warning text-dark">Incoming</span>
+                  {% endif %}
+                </td>
+                <td><span class="small text-muted">{{ a.modificado.strftime('%d/%m/%Y %H:%M') }}</span></td>
+                <td>
+                  {% if a.tiene_cache %}
+                  <span class="badge bg-success" title="{{ a.cant_caches }} página(s) cacheada(s)">
+                    <i class="bi bi-database"></i> {{ a.cant_caches }}
+                  </span>
+                  {% else %}
+                  <span class="badge bg-secondary">Sin caché</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+          <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+          No hay archivos con los filtros seleccionados.
+        </div>
+        {% endif %}
+      </div>
+      {% if archivos %}
+      <div class="card-footer">
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="usar_cache" value="1" id="usarCacheSi" checked>
+          <label class="form-check-label small" for="usarCacheSi">
+            Usar caché n8n (no reprocesar OCR)
+          </label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="usar_cache" value="0" id="usarCacheNo">
+          <label class="form-check-label small" for="usarCacheNo">
+            Reprocesar completo (n8n + IA)
+          </label>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<script>
+function toggleAll() {
+  const checks = document.querySelectorAll('.archivo-check:not(:disabled)');
+  const allChecked = Array.from(checks).every(c => c.checked);
+  checks.forEach(c => c.checked = !allChecked);
+  actualizarBoton();
+}
+
+document.querySelectorAll('.archivo-check').forEach(cb => {
+  cb.addEventListener('change', actualizarBoton);
+});
+
+function actualizarBoton() {
+  const btn = document.getElementById('btnReprocesar');
+  const seleccionados = document.querySelectorAll('.archivo-check:checked');
+  btn.disabled = seleccionados.length === 0;
+  btn.innerHTML = '<i class="bi bi-play-fill"></i> Reprocesar (' + seleccionados.length + ')';
+}
+</script>
+{% endblock %}

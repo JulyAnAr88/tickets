@@ -5,6 +5,8 @@ import logging
 from difflib import SequenceMatcher
 from sqlalchemy.orm import Session
 
+from cedir_common.paciente_service import limpiar_dni, buscar_candidatos_similares
+
 logger = logging.getLogger(__name__)
 
 # Esquema de base de datos (se setea desde afuera)
@@ -490,173 +492,6 @@ class ProtocoloManager:
             logger.error(f"Error buscando protocolo '{identificador}': {e}")
             return None
 
-    def buscar_candidatos_similares(self, nombre_busqueda: str = None, dni_busqueda: str = None, limit: int = 5) -> List[Dict[str, Any]]:
-        """
-        Busca candidatos similares cuando no hay coincidencia exacta
-
-        Args:
-            nombre_busqueda: Nombre a buscar
-            dni_busqueda: DNI a buscar
-            limit: Cantidad máxima de resultados
-
-        Returns:
-            Lista de candidatos con puntaje de similitud
-        """
-        candidates = []
-
-        try:
-            with self.engine.connect() as conn:
-                # Si hay DNI, buscar por cercanía numérica
-                if dni_busqueda:
-                    dni_limpio = self._limpiar_dni(dni_busqueda)
-                    if dni_limpio:
-                        # Buscar DNIs cercanos (±1000)
-                        query_dni = """
-                            SELECT 
-                                p.id as persona_id,
-                                p.nombre,
-                                p.apellido,
-                                p.nro_doc,
-                                pr.identificador_protocolo,
-                                pr.id as protocolo_id,
-                                ABS(p.nro_doc - :dni) as diff_dni
-                            FROM cedir.persona p 
-                            INNER JOIN cedir.paciente p2 ON p2.id_persona = p.id 
-                            INNER JOIN cedir.paciente_protocolo pp ON pp.id_paciente = p2.id 
-                            INNER JOIN cedir.protocolo pr ON pr.id = pp.id_protocolo
-                            WHERE ABS(p.nro_doc - :dni) < 1000
-                            ORDER BY diff_dni ASC
-                            LIMIT :limit
-                        """
-                        result = conn.execute(text(query_dni), {
-                            'dni': dni_limpio,
-                            'limit': limit
-                        })
-                        for row in result:
-                            candidates.append({
-                                'persona_id': row[0],
-                                'nombre': row[1],
-                                'apellido': row[2],
-                                'nro_doc': row[3],
-                                'protocolo': row[4],
-                                'protocolo_id': row[5],
-                                'similitud': 100 - min(row[6] / 10, 99),  # Convertir diferencia a porcentaje
-                                'tipo_coincidencia': 'dni_cercano',
-                                'nombre_completo': f"{row[1]} {row[2]}"
-                            })
-
-                # Si hay nombre, buscar por similitud (solo si no hay candidatos por DNI o se necesita)
-                if nombre_busqueda and len(candidates) < limit:
-                    nombre_limpio = nombre_busqueda.strip().lower()
-
-                    query_nombre = """
-                        SELECT 
-                            p.id as persona_id,
-                            p.nombre,
-                            p.apellido,
-                            p.nro_doc,
-                            pr.identificador_protocolo,
-                            pr.id as protocolo_id,
-                            similarity(LOWER(CONCAT(p.nombre, ' ', p.apellido)), :nombre) as sim_completo,
-                            similarity(LOWER(p.nombre), :nombre) as sim_nombre,
-                            similarity(LOWER(p.apellido), :nombre) as sim_apellido
-                        FROM cedir.persona p 
-                        INNER JOIN cedir.paciente p2 ON p2.id_persona = p.id 
-                        INNER JOIN cedir.paciente_protocolo pp ON pp.id_paciente = p2.id 
-                        INNER JOIN cedir.protocolo pr ON pr.id = pp.id_protocolo
-                        WHERE similarity(LOWER(CONCAT(p.nombre, ' ', p.apellido)), :nombre) > 0.3
-                           OR similarity(LOWER(p.nombre), :nombre) > 0.3
-                           OR similarity(LOWER(p.apellido), :nombre) > 0.3
-                        ORDER BY sim_completo DESC, sim_nombre DESC
-                        LIMIT :limit
-                    """
-                    result = conn.execute(text(query_nombre), {
-                        'nombre': nombre_limpio,
-                        'limit': limit - len(candidates)
-                    })
-
-                    for row in result:
-                        # Calcular mejor similitud
-                        sim = max(row[6] or 0, row[7] or 0, row[8] or 0)
-                        candidates.append({
-                            'persona_id': row[0],
-                            'nombre': row[1],
-                            'apellido': row[2],
-                            'nro_doc': row[3],
-                            'protocolo': row[4],
-                            'protocolo_id': row[5],
-                            'similitud': round(sim * 100, 2),
-                            'tipo_coincidencia': 'nombre_similar',
-                            'nombre_completo': f"{row[1]} {row[2]}"
-                        })
-
-                # Eliminar duplicados (mismo persona_id)
-                seen = set()
-                unique_candidates = []
-                for c in candidates:
-                    if c['persona_id'] not in seen:
-                        seen.add(c['persona_id'])
-                        unique_candidates.append(c)
-
-                # Si no hay suficientes candidatos, buscar en Geclisa
-                if len(unique_candidates) < limit:
-                    try:
-                        from cedir_common.geclisa import buscar_paciente_geclisa_por_dni, buscar_pacientes_geclisa_por_nombre
-
-                        if dni_busqueda:
-                            geclisa_pac = buscar_paciente_geclisa_por_dni(dni_busqueda)
-                            if geclisa_pac:
-                                already_seen = any(
-                                    c.get('ficha_id') == geclisa_pac['ficha_id']
-                                    for c in unique_candidates
-                                )
-                                if not already_seen and geclisa_pac['nro_doc']:
-                                    unique_candidates.append({
-                                        'persona_id': None,
-                                        'ficha_id': geclisa_pac['ficha_id'],
-                                        'nombre': geclisa_pac['nombre'],
-                                        'apellido': geclisa_pac['apellido'],
-                                        'nro_doc': int(geclisa_pac['nro_doc']),
-                                        'protocolo': '',
-                                        'protocolo_id': None,
-                                        'similitud': 99,
-                                        'tipo_coincidencia': 'dni_geclisa',
-                                        'nombre_completo': f"{geclisa_pac['nombre']} {geclisa_pac['apellido']}",
-                                        'origen': 'geclisa',
-                                    })
-
-                        if nombre_busqueda and len(unique_candidates) < limit:
-                            geclisa_list = buscar_pacientes_geclisa_por_nombre(
-                                nombre_busqueda,
-                                limit=limit - len(unique_candidates)
-                            )
-                            for gp in geclisa_list:
-                                if not any(
-                                    c.get('ficha_id') == gp['ficha_id']
-                                    for c in unique_candidates
-                                ):
-                                    unique_candidates.append({
-                                        'persona_id': None,
-                                        'ficha_id': gp['ficha_id'],
-                                        'nombre': gp['nombre'],
-                                        'apellido': gp['apellido'],
-                                        'nro_doc': int(gp['nro_doc']) if gp['nro_doc'] else None,
-                                        'protocolo': '',
-                                        'protocolo_id': None,
-                                        'similitud': 85,
-                                        'tipo_coincidencia': 'nombre_geclisa',
-                                        'nombre_completo': gp['nombre_completo'],
-                                        'origen': 'geclisa',
-                                    })
-                    except Exception as e:
-                        logger.error(f"Error buscando candidatos en Geclisa: {e}")
-
-                return unique_candidates[:limit]
-
-        except Exception as e:
-            logger.error(f"Error buscando candidatos: {e}")
-            return []
-    
     def buscar_paciente_protocolo_avanzado(self, nombre_busqueda: str = None, dni_busqueda: str = None) -> Dict[str, Any]:
         """
         Busca un paciente - PRIORIZA BÚSQUEDA POR DNI
@@ -853,7 +688,7 @@ class ProtocoloManager:
     
         # ✅ PRIORIDAD 1: Búsqueda por DNI (más precisa)
         if dni_extraido:
-            dni_limpio = self._limpiar_dni(dni_extraido)
+            dni_limpio = limpiar_dni(dni_extraido)
             if dni_limpio:
                 logger.info(f"🔍 Buscando por DNI: {dni_limpio}")
                 paciente_info = self.buscar_paciente_protocolo_avanzado(dni_busqueda=str(dni_limpio))
@@ -958,7 +793,8 @@ class ProtocoloManager:
             logger.warning(f"❌ Paciente NO ENCONTRADO automáticamente: DNI='{dni_extraido}', Nombre='{nombre_extraido}'")
             
             # Buscar candidatos similares para mostrar al usuario
-            candidatos = self.buscar_candidatos_similares(
+            candidatos = buscar_candidatos_similares(
+                self.engine,
                 nombre_busqueda=nombre_extraido,
                 dni_busqueda=dni_extraido
             )
@@ -973,31 +809,3 @@ class ProtocoloManager:
                 logger.warning("📋 No se encontraron candidatos similares")
     
         return ticket_data
-    
-    def _limpiar_dni(self, dni: Any) -> Optional[int]:
-        """
-        Convierte un DNI desde string o número a entero limpio
-
-        Args:
-            dni: DNI en formato string, int, o float
-
-        Returns:
-            DNI como entero o None si no es válido
-        """
-        if dni is None:
-            return None
-
-        # Convertir a string
-        dni_str = str(dni).strip()
-
-        # Eliminar caracteres no numéricos
-        dni_limpio = ''.join(filter(str.isdigit, dni_str))
-
-        if not dni_limpio:
-            return None
-
-        try:
-            return int(dni_limpio)
-        except ValueError:
-            logger.warning(f"No se pudo convertir DNI: {dni}")
-            return None

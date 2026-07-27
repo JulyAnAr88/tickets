@@ -41,6 +41,12 @@
                        style="border-radius: 0.5rem; padding: 0.75rem;">
             </div>
             
+            <div class="text-end mb-3">
+                <a href="{{ url_for('cedir_auth.forgot_password', redirect_to=url_for('login')) }}" class="small text-decoration-none">
+                    <i class="bi bi-question-circle"></i> Olvidé mi contraseña
+                </a>
+            </div>
+            
             <button type="submit" class="btn w-100 py-2" 
                     style="background-color: var(--verde-cedir, #1FB58F); border-color: var(--verde-cedir, #1FB58F); color: white; border-radius: 0.5rem; font-weight: 600;">
                 <i class="bi bi-box-arrow-in-right"></i> Ingresar

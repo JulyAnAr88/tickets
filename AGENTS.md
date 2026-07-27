@@ -11,8 +11,8 @@
 ## Commands
 
 ```bash
-python3 app.py                    # dev server on :5151
-gunicorn app:app -b 0.0.0.0:5151 # production (Dockerfile)
+python3 app.py                    # dev server on :5001
+gunicorn app:app -b 0.0.0.0:5001 # production (Dockerfile)
 python3 -m py_compile app.py      # syntax check only
 
 # Celery worker (must be running for uploads to work)

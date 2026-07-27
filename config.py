@@ -24,6 +24,8 @@ class Config:
     SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'tu-supabase-anon-key')
     SUPABASE_JWT_SECRET = os.environ.get('SUPABASE_JWT_SECRET', 'tu-jwt-secret')
 
+    CEDIR_LOGIN_URL = os.environ.get('CEDIR_LOGIN_URL', '/login')
+
     # Gemini API Configuration
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
     DATABASE_URL=f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"

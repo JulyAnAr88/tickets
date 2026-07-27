@@ -6,7 +6,7 @@ from ticket_processor import TicketProcessor
 logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
-def process_tickets(self, file_path, usuario=None, schema='cedir'):
+def process_tickets(self, file_path, usuario=None, schema='cedir', factura_referencia=None):
     api_key = os.environ.get('GEMINI_API_KEY', '')
     db_url = os.environ.get('DATABASE_URL', '')
     processed_folder = os.environ.get('PROCESSED_FOLDER', '/home/files/processed')
@@ -29,7 +29,8 @@ def process_tickets(self, file_path, usuario=None, schema='cedir'):
         file_path=file_path,
         usuario=usuario,
         move_to_processed=True,
-        validate=True
+        validate=True,
+        factura_referencia=factura_referencia
     )
 
     logger.info(f"Celery task completada: {result.get('message', 'OK')}")
