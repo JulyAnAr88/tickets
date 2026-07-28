@@ -213,26 +213,234 @@ en el orden correcto.
 
 ---
 
-## 5. Nuevo endpoint web: ABM Criterios de Reintegro
+## 5. Especificación de API para ABM de Reglas de Reintegro
 
-Se agregó una interfaz web para gestionar las reglas de reintegro sin necesidad
-de SQL directo.
+Esta sección describe los endpoints REST necesarios para implementar un ABM
+de reglas de reintegro en otra aplicación. Cada regla de reintegro es una
+combinación de 4 componentes (concepto, condición, monto, requisito) asignada
+a un protocolo.
 
-### Rutas
+### 5.1 Esquema de la base de datos (modelo relacional)
 
-| Ruta | Método | Descripción |
+```
+protocolo ──┬── protocolo_reintegro ──┬── reintegro ──┬── concepto_reintegro
+            │                         │               ├── condicion_reintegro
+            │                         │               ├── monto_reintegro
+            │                         │               └── requisito_reintegro
+```
+
+#### `protocolo`
+
+| Columna | Tipo | Descripción |
 |---|---|---|
-| `/abm/reintegros` | GET | Página principal con selector de protocolo y tabla de reglas |
-| `/abm/reintegros/api/listar/<id>` | GET | JSON con las reglas de un protocolo |
-| `/abm/reintegros/api/agregar` | POST | Crea un nuevo reintegro + lo asigna al protocolo |
-| `/abm/reintegros/api/editar/<id>` | POST | Modifica un reintegro existente |
-| `/abm/reintegros/api/eliminar` | POST | Elimina la asignación y el reintegro |
+| `id` | INTEGER PK | ID del protocolo |
+| `identificador_protocolo` | VARCHAR(50) | Nombre del protocolo (ej: "GZP1 - LILLY") |
 
-### Archivos
+#### `reintegro` — regla individual
 
-- `templates/criterios_reintegro.html` — Interfaz ABM
-- `static/js/criterios_reintegro.js` — Lógica AJAX
-- Sidebar: nuevo enlace "Criterios de Reintegro"
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | INTEGER PK | ID de la regla |
+| `id_concepto` | SMALLINT FK → `concepto_reintegro.id` | Concepto que evalúa |
+| `id_condicion` | INTEGER FK → `condicion_reintegro.id` | Condición de aplicación |
+| `id_monto` | INTEGER FK → `monto_reintegro.id` | Cálculo del monto |
+| `id_requisito` | INTEGER FK → `requisito_reintegro.id` | Documentación requerida (nullable) |
+
+#### `protocolo_reintegro` — asignación N:M
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id_protocolo` | SMALLINT FK → `protocolo.id` | Protocolo |
+| `id_reintegro` | SMALLINT FK → `reintegro.id` | Regla asignada |
+| UNIQUE(`id_protocolo`, `id_reintegro`) | | |
+
+#### `concepto_reintegro`
+
+| Columna | Tipo | Valores ejemplo |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `descripcion` | VARCHAR(150) | "Viático base", "Desayuno", "Comida" |
+| `categoria` | VARCHAR(30) | `VIATICO_BASE`, `DESAYUNO`, `COMIDA`, `HOTEL`, `TRASLADO`, `KILOMETRAJE`, `OTRO` |
+
+#### `condicion_reintegro`
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `descripcion` | VARCHAR(150) | Texto legible |
+| `id_tipo_condicion` | INTEGER FK → `tipo_condicion.id` | Tipo de condición |
+| `parametro_evaluacion` | NUMERIC(10,2) | Umbral (nullable según tipo) |
+
+#### `tipo_condicion`
+
+| Columna | Tipo | Valores ejemplo |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `codigo` | VARCHAR(50) | `SIEMPRE`, `SUPERA_MONTO`, `RANGO_MONTO` |
+
+#### `monto_reintegro`
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `tipo` | VARCHAR(50) | `FIJO`, `REEMBOLSO_DIFERENCIA`, `POR_KILOMETRO` |
+| `valor_numerico` | NUMERIC(10,2) | Valor fijo o tope máximo (nullable si sin tope) |
+| `unidad` | VARCHAR(50) | `USD`, `km` (nullable) |
+| `texto_extra` | VARCHAR(200) | Texto adicional (nullable) |
+
+#### `requisito_reintegro`
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `descripcion` | VARCHAR(150) | Ej: "Ticket original + orden de viaje" |
+
+### 5.2 Endpoints requeridos
+
+#### Listar reglas de un protocolo
+
+```
+GET /api/reintegros?protocolo_id=<id>
+```
+
+Respuesta:
+```json
+{
+  "reglas": [
+    {
+      "id_protocolo": 2,
+      "id_reintegro": 1,
+      "id_concepto": 1,
+      "concepto": "Viático base",
+      "categoria": "VIATICO_BASE",
+      "id_condicion": 1,
+      "condicion": "Siempre aplica",
+      "tipo_codigo": "SIEMPRE",
+      "parametro_evaluacion": null,
+      "id_monto": 1,
+      "monto_tipo": "FIJO",
+      "monto_valor": 100.00,
+      "monto_unidad": "USD",
+      "id_requisito": 1,
+      "requisito": "Ticket original"
+    }
+  ]
+}
+```
+
+#### Crear regla y asignarla a un protocolo
+
+```
+POST /api/reintegros
+Content-Type: application/json
+
+{
+  "id_protocolo": 2,
+  "id_concepto": 1,
+  "id_condicion": 2,
+  "id_monto": 3,
+  "id_requisito": null
+}
+```
+
+Acción en un solo paso:
+1. INSERT en `reintegro` con los IDs dados → obtener `new_id`
+2. INSERT en `protocolo_reintegro` (`id_protocolo`, `id_reintegro` = `new_id`)
+
+Respuesta:
+```json
+{
+  "success": true,
+  "id_reintegro": 32
+}
+```
+
+Campos obligatorios: `id_protocolo`, `id_concepto`, `id_condicion`, `id_monto`.
+
+Si `id_requisito` es null, se guarda como NULL.
+
+#### Editar una regla existente
+
+```
+PUT /api/reintegros/:id
+Content-Type: application/json
+
+{
+  "id_concepto": 2,
+  "id_condicion": 3,
+  "id_monto": 4,
+  "id_requisito": null
+}
+```
+
+UPDATE directo sobre `reintegro` donde `id = :id`.
+
+Respuesta: `{"success": true}`
+
+#### Eliminar regla y su asignación
+
+```
+DELETE /api/reintegros/:protocolo_id/:reintegro_id
+```
+
+Dos pasos en una transacción:
+1. DELETE de `protocolo_reintegro` WHERE `id_protocolo = :protocolo_id AND id_reintegro = :reintegro_id`
+2. DELETE de `reintegro` WHERE `id = :reintegro_id`
+
+Respuesta: `{"success": true}`
+
+#### Listar todos los protocolos (para selector)
+
+```
+GET /api/protocolos
+```
+
+```json
+{
+  "protocolos": [
+    {"id": 2, "identificador_protocolo": "GZP2 - LILLY"},
+    ...
+  ]
+}
+```
+
+#### Listar catálogos (conceptos, condiciones, montos, requisitos)
+
+```
+GET /api/catalogos/reintegros
+```
+
+```json
+{
+  "conceptos": [{"id": 1, "descripcion": "Viático base", "categoria": "VIATICO_BASE"}, ...],
+  "condiciones": [{"id": 1, "descripcion": "Siempre aplica", "tipo_codigo": "SIEMPRE", "parametro_evaluacion": null}, ...],
+  "montos": [{"id": 1, "tipo": "FIJO", "valor_numerico": 100.00, "unidad": "USD", "texto_extra": null}, ...],
+  "requisitos": [{"id": 1, "descripcion": "Ticket original"}, ...]
+}
+```
+
+### 5.3 Reglas de negocio a respetar en el frontend
+
+1. Una regla de tipo `APROBACION_ESPECIAL` solo tiene sentido si existe una
+   regla `REEMBOLSO_DIFERENCIA` en el mismo protocolo con un umbral menor.
+2. `VIÁTICOS INCLUIDOS` (FIJO) y `REEMBOLSO_DIFERENCIA` (con o sin tope)
+   son los únicos tipos que consumen del "pool" del ticket. `APROBACION_ESPECIAL`
+   es informativo.
+3. Las categorías DESAYUNO/COMIDA/HOTEL se excluyen automáticamente si el
+   ticket es de traslado. Las categorías TRASLADO/KILOMETRAJE se excluyen
+   si el ticket NO es de traslado. Ver sección 2.1.
+
+### 5.4 Consideraciones de implementación
+
+- Todas las tablas referidas están en un mismo esquema (ej: `cedir` o `auxiliar`).
+- Usar transacciones para las operaciones de crear y eliminar (2 INSERT o 2 DELETE).
+- El catálogo `condicion_reintegro` requiere JOIN con `tipo_condicion` para
+  obtener el `codigo` (SIEMPRE, SUPERA_MONTO, etc.).
+- Los valores `parametro_evaluacion` y `monto_valor` se almacenan en la moneda
+  configurada en `monto_reintegro.unidad` (generalmente USD).
+- La evaluación de cada regla la hace la función PL/pgSQL
+  `evaluar_reintegros_por_ticket_trigger()` — el ABM solo gestiona la
+  configuración, no ejecuta la evaluación.
 
 ---
 
@@ -348,11 +556,6 @@ SELECT * FROM cedir.evaluar_reintegros_por_ticket_trigger(
 
 | Archivo | Cambio |
 |---|---|
-| `app.py` | +6 rutas para CRUD de reintegros, + función `get_schema()` |
-| `templates/criterios_reintegro.html` | Nuevo — ABM de reglas de reintegro |
-| `templates/sidebar_desktop.html` | + link "Criterios de Reintegro" |
-| `templates/sidebar_mobile.html` | + link "Criterios de Reintegro" |
-| `static/js/criterios_reintegro.js` | Nuevo — lógica AJAX para el ABM |
 | `docs/REINTEGROS.md` | Este documento |
 
 ### Base de datos (esquema `auxiliar`)
