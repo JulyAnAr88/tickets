@@ -1147,6 +1147,168 @@ def api_protocolos_lista():
         return jsonify(protocolos)
     return jsonify([])
 
+# =====================================================
+# CRUD Criterios de Reintegro
+# =====================================================
+
+def get_schema():
+    return current_app.config.get('DB_SCHEMA', 'cedir')
+
+@app.route('/abm/reintegros')
+@supabase_helper.login_required
+def criterios_reintegro():
+    schema = get_schema()
+    engine = ticket_processor.processor.engine if ticket_processor and ticket_processor.processor else None
+    protocolos = []
+    conceptos = []
+    condiciones = []
+    montos = []
+    requisitos = []
+    if engine:
+        with engine.connect() as conn:
+            protocolos = [dict(r) for r in conn.execute(text(
+                f"SELECT id, identificador_protocolo FROM {schema}.protocolo ORDER BY identificador_protocolo"
+            ))]
+            conceptos = [dict(r) for r in conn.execute(text(
+                f"SELECT id, descripcion, categoria FROM {schema}.concepto_reintegro ORDER BY categoria, descripcion"
+            ))]
+            condiciones = [dict(r) for r in conn.execute(text(
+                f"SELECT c.id, c.descripcion, tc.codigo as tipo_codigo, c.parametro_evaluacion "
+                f"FROM {schema}.condicion_reintegro c "
+                f"JOIN {schema}.tipo_condicion tc ON c.id_tipo_condicion = tc.id "
+                f"ORDER BY tc.codigo, c.descripcion"
+            ))]
+            montos = [dict(r) for r in conn.execute(text(
+                f"SELECT id, tipo, valor_numerico, unidad, texto_extra FROM {schema}.monto_reintegro ORDER BY tipo"
+            ))]
+            requisitos = [dict(r) for r in conn.execute(text(
+                f"SELECT id, descripcion FROM {schema}.requisito_reintegro ORDER BY descripcion"
+            ))]
+    return render_template('criterios_reintegro.html',
+                         protocolos=protocolos, conceptos=conceptos,
+                         condiciones=condiciones, montos=montos,
+                         requisitos=requisitos, schema=schema,
+                         user=supabase_helper.get_current_user())
+
+@app.route('/abm/reintegros/api/listar/<int:protocolo_id>')
+@supabase_helper.login_required
+def api_listar_reintegros(protocolo_id):
+    schema = get_schema()
+    engine = ticket_processor.processor.engine if ticket_processor and ticket_processor.processor else None
+    if not engine:
+        return jsonify({'error': 'Motor no disponible'})
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                SELECT
+                    pr.id_protocolo, pr.id_reintegro,
+                    r.id_concepto, c.descripcion as concepto, c.categoria,
+                    r.id_condicion, cond.descripcion as condicion,
+                    tc.codigo as tipo_codigo, cond.parametro_evaluacion,
+                    r.id_monto, m.tipo as monto_tipo, m.valor_numerico as monto_valor,
+                    m.unidad as monto_unidad,
+                    r.id_requisito, req.descripcion as requisito
+                FROM {schema}.protocolo_reintegro pr
+                JOIN {schema}.reintegro r ON pr.id_reintegro = r.id
+                JOIN {schema}.concepto_reintegro c ON r.id_concepto = c.id
+                JOIN {schema}.condicion_reintegro cond ON r.id_condicion = cond.id
+                JOIN {schema}.tipo_condicion tc ON cond.id_tipo_condicion = tc.id
+                JOIN {schema}.monto_reintegro m ON r.id_monto = m.id
+                LEFT JOIN {schema}.requisito_reintegro req ON r.id_requisito = req.id
+                WHERE pr.id_protocolo = :pid
+                ORDER BY c.categoria, r.id
+            """), {'pid': protocolo_id})
+            reglas = [dict(r._mapping) for r in rows]
+            return jsonify({'reglas': reglas})
+    except Exception as e:
+        logger.error(f"Error listando reintegros: {e}", exc_info=True)
+        return jsonify({'error': str(e)})
+
+@app.route('/abm/reintegros/api/agregar', methods=['POST'])
+@supabase_helper.login_required
+def api_agregar_reintegro():
+    schema = get_schema()
+    data = request.get_json()
+    id_protocolo = data.get('id_protocolo')
+    id_concepto = data.get('id_concepto')
+    id_condicion = data.get('id_condicion')
+    id_monto = data.get('id_monto')
+    id_requisito = data.get('id_requisito')
+    if not all([id_protocolo, id_concepto, id_condicion, id_monto]):
+        return jsonify({'error': 'Faltan campos obligatorios'})
+    engine = ticket_processor.processor.engine if ticket_processor and ticket_processor.processor else None
+    if not engine:
+        return jsonify({'error': 'Motor no disponible'})
+    try:
+        with engine.connect() as conn:
+            with conn.begin():
+                result = conn.execute(text(f"""
+                    INSERT INTO {schema}.reintegro (id_concepto, id_condicion, id_monto, id_requisito)
+                    VALUES (:ic, :icond, :im, :ireq)
+                    RETURNING id
+                """), {'ic': id_concepto, 'icond': id_condicion, 'im': id_monto, 'ireq': id_requisito or None})
+                new_id = result.fetchone()[0]
+                conn.execute(text(f"""
+                    INSERT INTO {schema}.protocolo_reintegro (id_protocolo, id_reintegro)
+                    VALUES (:ip, :ir)
+                    ON CONFLICT DO NOTHING
+                """), {'ip': id_protocolo, 'ir': new_id})
+            return jsonify({'success': True, 'id_reintegro': new_id})
+    except Exception as e:
+        logger.error(f"Error agregando reintegro: {e}", exc_info=True)
+        return jsonify({'error': str(e)})
+
+@app.route('/abm/reintegros/api/editar/<int:id_reintegro>', methods=['POST'])
+@supabase_helper.login_required
+def api_editar_reintegro(id_reintegro):
+    schema = get_schema()
+    data = request.get_json()
+    id_concepto = data.get('id_concepto')
+    id_condicion = data.get('id_condicion')
+    id_monto = data.get('id_monto')
+    id_requisito = data.get('id_requisito')
+    if not all([id_concepto, id_condicion, id_monto]):
+        return jsonify({'error': 'Faltan campos obligatorios'})
+    engine = ticket_processor.processor.engine if ticket_processor and ticket_processor.processor else None
+    if not engine:
+        return jsonify({'error': 'Motor no disponible'})
+    try:
+        with engine.connect() as conn:
+            with conn.begin():
+                conn.execute(text(f"""
+                    UPDATE {schema}.reintegro
+                    SET id_concepto = :ic, id_condicion = :icond, id_monto = :im, id_requisito = :ireq
+                    WHERE id = :idr
+                """), {'ic': id_concepto, 'icond': id_condicion, 'im': id_monto, 'ireq': id_requisito or None, 'idr': id_reintegro})
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error editando reintegro: {e}", exc_info=True)
+        return jsonify({'error': str(e)})
+
+@app.route('/abm/reintegros/api/eliminar', methods=['POST'])
+@supabase_helper.login_required
+def api_eliminar_reintegro():
+    schema = get_schema()
+    data = request.get_json()
+    id_protocolo = data.get('id_protocolo')
+    id_reintegro = data.get('id_reintegro')
+    if not all([id_protocolo, id_reintegro]):
+        return jsonify({'error': 'Faltan id_protocolo y id_reintegro'})
+    engine = ticket_processor.processor.engine if ticket_processor and ticket_processor.processor else None
+    if not engine:
+        return jsonify({'error': 'Motor no disponible'})
+    try:
+        with engine.connect() as conn:
+            with conn.begin():
+                conn.execute(text(f"DELETE FROM {schema}.protocolo_reintegro WHERE id_protocolo = :ip AND id_reintegro = :ir"),
+                           {'ip': id_protocolo, 'ir': id_reintegro})
+                conn.execute(text(f"DELETE FROM {schema}.reintegro WHERE id = :ir"),
+                           {'ir': id_reintegro})
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error eliminando reintegro: {e}", exc_info=True)
+        return jsonify({'error': str(e)})
+
 @app.route('/abm/superset')
 @supabase_helper.login_required
 def superset():
