@@ -236,6 +236,56 @@ de SQL directo.
 
 ---
 
+## 5.5 Tipo de cambio histórico
+
+### 5.5.1 Tabla `auxiliar.cotizacion_historica`
+
+Almacena cotizaciones USD por fecha para usarlas en la evaluación de tickets
+de fechas anteriores sin depender de la cotización del día actual.
+
+```sql
+CREATE TABLE auxiliar.cotizacion_historica (
+    fecha DATE PRIMARY KEY,
+    cotizacion NUMERIC(10,2) NOT NULL,
+    fuente VARCHAR(50) DEFAULT 'API',
+    actualizado TIMESTAMP DEFAULT NOW()
+);
+```
+
+### 5.5.2 Función `auxiliar.obtener_tipo_cambio(p_fecha DATE)`
+
+Reemplaza a `cedir.obtener_tipo_cambio_api()` para obtener la cotización
+correspondiente a la fecha del ticket. Estrategia de búsqueda:
+
+1. Busca en `cotizacion_historica` la fecha exacta
+2. Si no la encuentra, busca hasta 7 días hacia atrás
+3. Si no hay dato histórico, intenta obtenerla de la API de dolarapi.com
+   para la fecha específica (`GET /v1/dolares/oficial/YYYY-MM-DD`)
+4. Si la API no devuelve dato, usa la cotización del día actual como fallback
+
+Los valores obtenidos de la API se almacenan automáticamente en
+`cotizacion_historica` para reutilización futura.
+
+### 5.5.3 Integración en la evaluación
+
+La función `evaluar_reintegros_por_ticket_trigger` ahora determina el TC
+así:
+
+```sql
+v_tc_fecha := COALESCE(
+    v_ticket.fecha_ticket,     -- 1ra opción
+    v_ticket.fecha_viaje,      -- 2da opción
+    v_ticket.create_time::DATE, -- 3ra opción
+    CURRENT_DATE               -- fallback
+);
+v_tipo_cambio_efectivo := auxiliar.obtener_tipo_cambio(v_tc_fecha);
+```
+
+Si se pasa `p_tipo_cambio` explícitamente, se usa ese valor directamente
+(sin búsqueda por fecha).
+
+---
+
 ## 6. Pendiente para el pase a producción
 
 ### 6.1 Aplicar funciones en esquema `cedir`
