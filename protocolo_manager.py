@@ -738,7 +738,7 @@ class ProtocoloManager:
                                 'persona_id': result['persona_id'],
                                 'nombre': geclisa_pac['nombre'],
                                 'apellido': geclisa_pac['apellido'],
-                                'nro_doc': int(geclisa_pac['nro_doc']),
+                                'nro_doc': limpiar_dni(geclisa_pac['nro_doc']),
                                 'protocolo': protocolo_str,
                                 'protocolo_id': protocolo_id,
                                 'nombre_completo': f"{geclisa_pac['nombre']} {geclisa_pac['apellido']}",
@@ -777,7 +777,9 @@ class ProtocoloManager:
             ticket_data['paciente']['protocolo_id'] = paciente_info['protocolo_id']
             
             if paciente_info.get('nro_doc'):
-                ticket_data['paciente']['nro_doc'] = int(paciente_info['nro_doc'])
+                cleaned = limpiar_dni(paciente_info['nro_doc'])
+                if cleaned:
+                    ticket_data['paciente']['nro_doc'] = cleaned
             
             ticket_data['paciente']['encontrado'] = True
             ticket_data['paciente']['score'] = paciente_info.get('score', 100)

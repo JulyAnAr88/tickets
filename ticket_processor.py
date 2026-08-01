@@ -825,6 +825,14 @@ class TicketProcessor:
         if es_traslado:
             logger.info("🚕 Ticket marcado como traslado")
 
+        # ==================== DETECTAR ES_DESAYUNO ====================
+        es_desayuno = False
+        if data.get('es_desayuno'):
+            es_desayuno = True
+        normalized['es_desayuno'] = es_desayuno
+        if es_desayuno:
+            logger.info("🍳 Ticket marcado como desayuno")
+
         logger.info(f"Datos normalizados: paciente='{normalized['paciente']['nombre']}', DNI='{normalized['paciente']['dni']}', importe={normalized['totales']['importe_total']}")
 
         return normalized
@@ -837,7 +845,8 @@ class TicketProcessor:
             "paciente": {"nombre": "", "dni": ""},
             "viaje": {"fecha_viaje": "", "distancia": None, "unidad": ""},
             "totales": {"subtotal": None, "importe_total": None},
-            "es_traslado": False
+            "es_traslado": False,
+            "es_desayuno": False
         }
     
     def extract_tickets_from_pdf(self, pdf_path: str, validate: bool = True, use_cache: bool = True) -> List[Dict[str, Any]]:
@@ -887,17 +896,18 @@ class TicketProcessor:
         pasaje = str(pasaje_raw) if pasaje_raw is not None else ''
         usuario_registro = usuario or 'sistema'
         es_traslado = data.get('es_traslado', False)
+        es_desayuno = data.get('es_desayuno', False)
         factura_referencia = data.get('factura_referencia', '')
 
         query = text(f"""
             INSERT INTO {self.schema}.ticket (
                 paciente, fecha_viaje, fecha_ticket, distancia, unidad, 
                 protocolo, importe_total, pasaje, create_time, usuario, id_paciente,
-                es_traslado, factura_referencia
+                es_traslado, es_desayuno, factura_referencia
             ) VALUES (
                 :paciente, :fecha_viaje, :fecha_ticket, :distancia, :unidad,
                 :protocolo, :importe_total, :pasaje, NOW(), :usuario, :id_paciente,
-                :es_traslado, :factura_referencia
+                :es_traslado, :es_desayuno, :factura_referencia
             ) RETURNING id
         """)
 
@@ -913,6 +923,7 @@ class TicketProcessor:
             'usuario': usuario_registro[:100] if usuario_registro else None,
             'id_paciente': id_paciente,
             'es_traslado': es_traslado,
+            'es_desayuno': es_desayuno,
             'factura_referencia': factura_referencia[:100] if factura_referencia else None
         }
 

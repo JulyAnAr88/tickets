@@ -60,6 +60,8 @@ class TicketForm(FlaskForm):
     
     es_traslado = BooleanField('Es Traslado', default=False)
     
+    es_desayuno = BooleanField('Es Desayuno', default=False)
+    
     factura_referencia = StringField('Nro Factura Referencia', validators=[Optional(), Length(max=100)])
     
     subtotal = DecimalField('Subtotal', places=2, validators=[Optional()])

@@ -136,6 +136,28 @@
                     </div>
 
                     <div class="row">
+                        <div class="col-md-3 mb-3">
+                            {{ form.es_traslado.label(class="form-label") }}
+                            <div class="form-check mt-2">
+                                {{ form.es_traslado(class="form-check-input") }}
+                                <label class="form-check-label" for="es_traslado">
+                                    Es traslado
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3 mb-3">
+                            {{ form.es_desayuno.label(class="form-label") }}
+                            <div class="form-check mt-2">
+                                {{ form.es_desayuno(class="form-check-input") }}
+                                <label class="form-check-label" for="es_desayuno">
+                                    Es desayuno
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
                         <div class="col-md-4 mb-3">
                             {{ form.horas_duracion_visita.label(class="form-label") }}
                             {{ form.horas_duracion_visita(class="form-control", step="0.5", placeholder="Ej: 2.5") }}

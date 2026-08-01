@@ -752,6 +752,7 @@ def formulario():
             usuario=form.usuario.data,
             create_time=datetime.utcnow(),
             es_traslado=form.es_traslado.data,
+            es_desayuno=form.es_desayuno.data,
             factura_referencia=form.factura_referencia.data
         )
         
@@ -872,6 +873,7 @@ def editar(id):
         ticket.cantidad_noches = form.cantidad_noches.data or 0
         ticket.preseleccion_no_completo = form.preseleccion_no_completo.data
         ticket.es_traslado = form.es_traslado.data
+        ticket.es_desayuno = form.es_desayuno.data
         ticket.factura_referencia = form.factura_referencia.data
         ticket.subtotal = form.subtotal.data
         ticket.importe_total = form.importe_total.data
@@ -1039,6 +1041,9 @@ def procesar_ticket(id):
                 
                 if extracted.get('es_traslado'):
                     ticket.es_traslado = extracted['es_traslado']
+                
+                if extracted.get('es_desayuno'):
+                    ticket.es_desayuno = extracted['es_desayuno']
                 
                 if extracted.get('fecha_ticket'):
                     try:
@@ -1360,6 +1365,7 @@ def nuevo_ticket():
                 'fecha_ticket': request.form.get('fecha_ticket', '').strip(),
                 'pasaje': request.form.get('pasaje', '').strip(),
                 'es_traslado': request.form.get('es_traslado') == '1',
+                'es_desayuno': request.form.get('es_desayuno') == '1',
                 'factura_referencia': request.form.get('factura_referencia', '').strip(),
             }
 

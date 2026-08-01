@@ -33,6 +33,7 @@ class Ticket(db.Model):
     preseleccion_no_completo = db.Column(db.Boolean, default=False)
     id_paciente = db.Column(db.Integer, nullable=True)
     es_traslado = db.Column(db.Boolean, default=False)
+    es_desayuno = db.Column(db.Boolean, default=False)
     factura_referencia = db.Column(db.String(100), nullable=True)
     
     def __repr__(self):
@@ -61,5 +62,6 @@ class Ticket(db.Model):
             'preseleccion_no_completo': self.preseleccion_no_completo,
             'id_paciente': self.id_paciente,
             'es_traslado': self.es_traslado,
+            'es_desayuno': self.es_desayuno,
             'factura_referencia': self.factura_referencia
         }
