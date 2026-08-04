@@ -9,12 +9,12 @@
     <div class="offcanvas-body">
         <ul class="nav flex-column">
             <li class="nav-item">
-                <a class="nav-link-item" href="{{ url_for('abm') }}" style="color:var(--sidebar-text);display:flex;align-items:center;gap:12px;padding:10px 16px;text-decoration:none;">
+                <a class="nav-link-item {% if request.endpoint == 'abm' %}active{% endif %}" href="{{ url_for('abm') }}" style="color:var(--sidebar-text);display:flex;align-items:center;gap:12px;padding:10px 16px;text-decoration:none;">
                     <i class="bi bi-images"></i> Gestión de Imágenes
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link-item" href="{{ url_for('superset') }}" style="color:var(--sidebar-text);display:flex;align-items:center;gap:12px;padding:10px 16px;text-decoration:none;">
+                <a class="nav-link-item {% if request.endpoint == 'superset' %}active{% endif %}" href="{{ url_for('superset') }}" style="color:var(--sidebar-text);display:flex;align-items:center;gap:12px;padding:10px 16px;text-decoration:none;">
                     <i class="bi bi-graph-up"></i> Dashboard
                 </a>
             </li>

@@ -287,7 +287,7 @@
                     <div class="row">
                         <div class="col-md-5 mb-2">
                             <input type="text" name="termino" class="form-control"
-                                placeholder="Buscar por paciente, protocolo, pasaje o usuario..."
+                                placeholder="Buscar por paciente, protocolo, identificador, factura, pasaje o usuario..."
                                 value="{{ termino if termino else '' }}">
                         </div>
                         <div class="col-md-3 mb-2">
@@ -333,7 +333,7 @@
                                         <input type="checkbox" id="selectAllCheckbox" style="transform: scale(1.2);">
                                     </th>
                                     <th>Paciente</th>
-                                    <th>Protocolo</th>
+                                    <th>Protocolo - Identificador</th>
                                     <th>Fecha Ticket</th>
                                     <th>Importe Total</th>
                                     <th>Factura Ref.</th>
@@ -348,7 +348,7 @@
                                             class="ticket-checkbox">
                                     </td>
                                     <td>{{ ticket.paciente if ticket.paciente else '-' }}</td>
-                                    <td>{{ ticket.protocolo if ticket.protocolo else '-' }}</td>
+                                    <td>{{ ticket.protocolo if ticket.protocolo else '-' }}{% if identificador_map.get(ticket.id_paciente) %} - {{ identificador_map.get(ticket.id_paciente) }}{% endif %}</td>
                                     <td>{{ ticket.fecha_ticket.strftime('%d/%m/%Y') if ticket.fecha_ticket else '-' }}
                                     </td>
                                     <td>$ {{ '{:,.2f}'.format(ticket.importe_total) if ticket.importe_total else '0.00'

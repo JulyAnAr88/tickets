@@ -19,13 +19,13 @@
         <nav class="sidebar-nav">
             <ul>
                 <li>
-                    <a class="nav-link-item" href="{{ url_for('abm') }}">
+                    <a class="nav-link-item {% if request.endpoint == 'abm' %}active{% endif %}" href="{{ url_for('abm') }}">
                         <i class="bi bi-images"></i>
                         <span class="nav-label">Gestión de Imágenes</span>
                     </a>
                 </li>
                 <li>
-                    <a class="nav-link-item" href="{{ url_for('superset') }}">
+                    <a class="nav-link-item {% if request.endpoint == 'superset' %}active{% endif %}" href="{{ url_for('superset') }}">
                         <i class="bi bi-graph-up"></i>
                         <span class="nav-label">Dashboard</span>
                     </a>

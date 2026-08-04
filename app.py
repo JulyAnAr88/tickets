@@ -321,18 +321,33 @@ def abm():
     query = Ticket.query
     
     if termino:
+        # Buscar persona_ids que coincidan con el identificador (cedir.paciente_protocolo)
+        matching_persona_ids = set()
+        try:
+            id_rows = db.session.execute(text("""
+                SELECT DISTINCT p.id_persona
+                FROM cedir.paciente_protocolo pp
+                JOIN cedir.paciente p ON p.id = pp.id_paciente
+                WHERE pp.identificador ILIKE :term
+            """), {'term': f'%{termino}%'}).fetchall()
+            matching_persona_ids = {r[0] for r in id_rows if r[0]}
+        except Exception as e:
+            logger.error(f"Error buscando identificador: {e}", exc_info=True)
+
         words = termino.strip().split()
         for word in words:
             like_word = f'%{word}%'
-            query = query.filter(
-                db.or_(
-                    Ticket.paciente.ilike(like_word),
-                    Ticket.protocolo.ilike(like_word),
-                    Ticket.unidad.ilike(like_word),
-                    Ticket.usuario.ilike(like_word),
-                    Ticket.pasaje.ilike(like_word)
-                )
-            )
+            condiciones = [
+                Ticket.paciente.ilike(like_word),
+                Ticket.protocolo.ilike(like_word),
+                Ticket.unidad.ilike(like_word),
+                Ticket.usuario.ilike(like_word),
+                Ticket.pasaje.ilike(like_word),
+                Ticket.factura_referencia.ilike(like_word),
+            ]
+            if matching_persona_ids:
+                condiciones.append(Ticket.id_paciente.in_(matching_persona_ids))
+            query = query.filter(db.or_(*condiciones))
     
     if fecha_desde:
         try:
@@ -349,10 +364,31 @@ def abm():
             pass
     
     tickets = query.order_by(Ticket.create_time.desc()).all()
-    
+
+    # Mapa persona_id -> identificador desde cedir.paciente_protocolo
+    identificador_map = {}
+    persona_ids = [t.id_paciente for t in tickets if t.id_paciente]
+    if persona_ids:
+        try:
+            from sqlalchemy import bindparam
+            rows = db.session.execute(
+                text("""
+                    SELECT DISTINCT ON (p.id_persona) p.id_persona, pp.identificador
+                    FROM cedir.paciente p
+                    JOIN cedir.paciente_protocolo pp ON pp.id_paciente = p.id
+                    WHERE p.id_persona IN :persona_ids
+                    ORDER BY p.id_persona, pp.updated_at DESC
+                """).bindparams(bindparam('persona_ids', expanding=True)),
+                {'persona_ids': list(persona_ids)}
+            ).fetchall()
+            identificador_map = {row[0]: row[1] for row in rows if row[1]}
+        except Exception as e:
+            logger.error(f"Error cargando identificadores: {e}", exc_info=True)
+
     return render_template('abm.html', 
                          form=form,
                          tickets=tickets,
+                         identificador_map=identificador_map,
                          termino=termino,
                          fecha_desde=fecha_desde,
                          fecha_hasta=fecha_hasta,
